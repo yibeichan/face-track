@@ -8,10 +8,11 @@ import json
 import numpy as np
 from tqdm import tqdm
 from imutils.video import FileVideoStream
+from collections import defaultdict
 import threading
 
 class FaceDetector:
-    def __init__(self, video_path, scene_boundaries, output_dir, device='cuda' if torch.cuda.is_available() else 'cpu'):
+    def __init__(self, video_path, scene_boundaries, output_dir, device='cuda' if torch.cuda.is_available() else 'cpu', min_confidence=0.8):
         self.video_path = video_path
         self.scene_boundaries = scene_boundaries
         self.output_dir = output_dir
@@ -20,6 +21,7 @@ class FaceDetector:
         self.frame_buffer = []
         self.buffer_lock = threading.Lock()
         self.stop_signal = False
+        self.min_confidence = min_confidence
     
     def start_video_stream(self):
         self.vs = FileVideoStream(self.video_path).start()
@@ -29,14 +31,14 @@ class FaceDetector:
 
     def read_frames(self):
         while not self.stop_signal:
-            if len(self.frame_buffer) < 100:  # Keep a buffer of 100 frames
+            if len(self.frame_buffer) < 100:
                 frame = self.vs.read()
                 if frame is None:
                     break
                 with self.buffer_lock:
                     self.frame_buffer.append(frame)
             else:
-                cv2.waitKey(10)  # Pause briefly to avoid CPU overuse
+                cv2.waitKey(10)
 
     def get_frame_from_buffer(self):
         with self.buffer_lock:
@@ -55,38 +57,36 @@ class FaceDetector:
         scene_face_detections = []
         annotated_video_path = os.path.join(self.output_dir, f"{os.path.basename(self.video_path).split('.')[0]}_annotated.mp4")
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(annotated_video_path, fourcc, 1, (int(cap.get(3)), int(cap.get(4))))  # Save only 1 frame per second
+        out = cv2.VideoWriter(annotated_video_path, fourcc, int(fps), (int(cap.get(3)), int(cap.get(4))))
 
         for scene_idx, (start_frame, end_frame) in enumerate(self.scene_boundaries):
-            start_time = start_frame / fps
-            end_time = end_frame / fps
+            chunk_size = int(fps)  # Process in chunks of 1 second (fps frames)
+            for chunk_start in tqdm(range(start_frame, end_frame, chunk_size), desc=f"Processing Scene {scene_idx + 1}/{len(self.scene_boundaries)}"):
+                chunk_end = min(chunk_start + chunk_size, end_frame)
+                middle_frames, frame_idxs = self._get_middle_frames(chunk_start, chunk_end, fps)
 
-            scene_results = []
-
-            for second in tqdm(range(int(start_time), int(end_time) + 1), desc=f"Processing Scene {scene_idx + 1}/{len(self.scene_boundaries)}"):
-                middle_frames = self._get_middle_frames(second, fps)
-                faces, annotated_frames = self._detect_faces_in_frames(middle_frames)
-
-                if faces:
-                    aggregated_faces = self._aggregate_faces(faces)
-                    if aggregated_faces:
-                        scene_results.append({
-                            "timepoint": second,
-                            "relative_index": second - int(start_time),
-                            "faces": aggregated_faces
-                        })
-                        out.write(annotated_frames[0])  # Save the frame related to the final decision
+                if middle_frames:
+                    faces, _ = self._detect_faces_in_frames(middle_frames)
+                    
+                    if faces:
+                        best_frame, aggregated_faces = self._select_best_frame(middle_frames, faces)
+                        representative_frame = self._annotate_frame(best_frame, aggregated_faces)
                     else:
-                        out.write(annotated_frames[len(annotated_frames)//2])  # Save the middle frame if no consistent face detection
-                else:
-                    out.write(middle_frames[len(middle_frames)//2])  # Save the middle frame if no faces are detected
+                        representative_frame = middle_frames[len(middle_frames) // 2]
+                        representative_frame = self._annotate_frame(representative_frame, [])
 
-            scene_face_detections.append({
-                "scene_index": scene_idx,
-                "scene_start_time": start_time,
-                "scene_end_time": end_time,
-                "detections": scene_results
-            })
+                    # Write the annotated representative frame for each frame in the current chunk
+                    for _ in range(chunk_end - chunk_start):
+                        out.write(representative_frame)
+
+                    scene_face_detections.append({
+                        "scene_index": scene_idx,
+                        "scene_start_time": chunk_start / fps,
+                        "scene_end_time": chunk_end / fps,
+                        "start_frame": chunk_start,
+                        "end_frame": chunk_end,
+                        "detections": aggregated_faces if faces else []
+                    })
 
         self.stop_signal = True
         cap.release()
@@ -94,76 +94,131 @@ class FaceDetector:
         self.stop_video_stream()
         return scene_face_detections
 
-    def _get_middle_frames(self, second, fps, num_samples=12):
-        start_frame = int(second * fps)
+    def _get_middle_frames(self, start_frame, end_frame, fps, num_samples=6):
+        """Get middle frames within a chunk."""
         middle_frames = []
+        frame_idxs = []
 
-        for i in range(0, num_samples, 2):
-            frame_idx = start_frame + int(fps / 2) + i - (num_samples // 2)
+        chunk_size = end_frame - start_frame
+        step = chunk_size // num_samples if num_samples > 0 else 1
+        middle_frame_start = start_frame + (chunk_size - num_samples * step) // 2
+
+        for i in range(num_samples):
+            frame_idx = middle_frame_start + i * step
             frame = self.get_frame_from_buffer()
             if frame is None:
                 break
             middle_frames.append(frame)
+            frame_idxs.append(frame_idx)
         
-        return middle_frames
+        return middle_frames, frame_idxs
 
-    def _detect_faces_in_frames(self, frames):
-        all_faces = []
-        annotated_frames = []
-
-        for frame in frames:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            boxes, probs, landmarks = self.mtcnn.detect(frame_rgb, landmarks=True)
-
-            if boxes is not None:
-                faces = [{"box": box.tolist(), "confidence": prob, "landmarks": landmark.tolist()} 
-                         for box, prob, landmark in zip(boxes, probs, landmarks)]
-                all_faces.append(faces)
-
-                # Annotate frame with bounding boxes and landmarks
-                annotated_frame = self._annotate_frame(frame, boxes, landmarks)
-                annotated_frames.append(annotated_frame)
-        
-        return all_faces, annotated_frames
-    
-    def _annotate_frame(self, frame, boxes, landmarks):
-        for box, landmark in zip(boxes, landmarks):
-            # Draw bounding box
-            cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 0), 2)
-            # Draw landmarks
-            for point in landmark:
-                cv2.circle(frame, (int(point[0]), int(point[1])), 2, (0, 0, 255), -1)
-        return frame
-
-    def _aggregate_faces(self, all_faces, iou_threshold=0.8, consistency_threshold=0.9):
-        if not all_faces:
-            return []
-        
-        # Flatten the list of face detections across frames
+    def _select_best_frame(self, frames, all_faces, iou_threshold=0.75, consistency_threshold=0.9):
+        """Select the best frame based on consistency and confidence of face detections."""
         flattened_faces = [face for faces in all_faces for face in faces]
         face_counts = len(flattened_faces)
 
         if face_counts == 0:
-            return []
+            return frames[len(frames) // 2], []
 
-        # Calculate IoU or a similar measure for consistency checking
-        selected_face = None
+        face_clusters = defaultdict(list)
+        cluster_id = 0
 
-        for face in flattened_faces:
-            similar_faces = [f for f in flattened_faces if self._iou(face["box"], f["box"]) > iou_threshold]
+        for i, face in enumerate(flattened_faces):
+            matched_cluster = None
 
-            if len(similar_faces) / face_counts >= consistency_threshold:
-                if not selected_face or face["confidence"] > selected_face["confidence"]:
-                    selected_face = face
+            for cid, cluster in face_clusters.items():
+                if self._iou(face["box"], cluster[0]["box"]) > iou_threshold:
+                    matched_cluster = cid
+                    break
+            
+            if matched_cluster is not None:
+                face_clusters[matched_cluster].append(face)
+            else:
+                face_clusters[cluster_id].append(face)
+                cluster_id += 1
+
+        aggregated_faces = []
+        best_frame_idx = 0
+        best_consistency_score = 0
+
+        for i, frame_faces in enumerate(all_faces):
+            consistency_score = 0
+            for face in frame_faces:
+                for cluster in face_clusters.values():
+                    if self._iou(face["box"], cluster[0]["box"]) > iou_threshold:
+                        consistency_score += 1
+            
+            if consistency_score > best_consistency_score:
+                best_consistency_score = consistency_score
+                best_frame_idx = i
+
+        # Aggregate the faces from the best frame's clusters
+        for cid, cluster in face_clusters.items():
+            if len(cluster) / face_counts >= consistency_threshold:
+                best_face = max(cluster, key=lambda x: x["confidence"])
+                aggregated_faces.append(best_face)
+
+        return frames[best_frame_idx], aggregated_faces
+
+    def _detect_faces_in_frames(self, frames):
+        all_faces = []
+        frames_rgb = [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) for frame in frames]
+
+        for frame_rgb in frames_rgb:
+            boxes, probs, landmarks = self.mtcnn.detect(frame_rgb, landmarks=True)
+            faces = []
+            if boxes is not None:
+                for box, prob, landmark in zip(boxes, probs, landmarks):
+                    if prob >= self.min_confidence and self._is_valid_box(box):
+                        faces.append({
+                            "box": box.tolist(), 
+                            "confidence": prob, 
+                            "landmarks": landmark.tolist()
+                        })
+            all_faces.append(faces)
         
-        return [selected_face] if selected_face else []
+        return all_faces, frames
+    
+    def _annotate_frame(self, frame, faces, rect_color=(0, 255, 0), circle_color=(0, 0, 255), text_color=(255, 255, 255)):
+        for face in faces:
+            box = face['box']
+            landmarks = face['landmarks']
+            confidence = face['confidence']
+            
+            # Draw the bounding box
+            cv2.rectangle(frame, 
+                          (int(box[0]), int(box[1])), 
+                          (int(box[2]), int(box[3])), 
+                          rect_color, 2)
+            
+            # Draw the landmarks
+            for point in landmarks:
+                cv2.circle(frame, 
+                           (int(point[0]), int(point[1])), 
+                           2, 
+                           circle_color, -1)
+            
+            # Display the confidence level
+            cv2.putText(frame, 
+                        f'{confidence:.2f}', 
+                        (int(box[0]), int(box[1]) - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 
+                        0.5, 
+                        text_color, 2)
+        return frame
+
+    def _is_valid_box(self, box, min_size=20, max_aspect_ratio=1.5):
+        width = box[2] - box[0]
+        height = box[3] - box[1]
+        aspect_ratio = max(width / height, height / width)
+        return width > min_size and height > min_size and aspect_ratio <= max_aspect_ratio
 
     def _iou(self, boxA, boxB):
-
         xA = max(boxA[0], boxB[0])
         yA = max(boxA[1], boxB[1])
         xB = min(boxA[2], boxB[2])
-        yB = min(boxA[3], boxB[3])
+        yB = min(boxB[3], boxB[3])
 
         interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
         boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
@@ -175,8 +230,6 @@ class FaceDetector:
     def save_results(self, output_file, face_detections):
         with open(output_file, 'w') as f:
             json.dump(face_detections, f, indent=4)
-
-        print(f"Results saved to {output_file}.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face Detection in Video Scenes')
