@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 data/
 output/
+logs/
 .env
 
 # C extensions

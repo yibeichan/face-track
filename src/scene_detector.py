@@ -1,10 +1,6 @@
 import cv2
-import argparse
-from dotenv import load_dotenv
 from scenedetect import SceneManager, VideoCaptureAdapter
 from scenedetect.detectors import ContentDetector, AdaptiveDetector, HashDetector
-import os
-
 class SceneDetector:
     def __init__(self, video_path, detector_type='adaptive', min_scene_len=15):
         self.video_path = video_path
@@ -60,27 +56,7 @@ class SceneDetector:
         # Print detected shots with both frame numbers and seconds
         for i, (start_frame, end_frame, start_time, end_time) in enumerate(self.shots):
             print(f"Shot {i + 1}: Start Frame = {start_frame}, End Frame = {end_frame}, Start Time = {start_time:.2f}s, End Time = {end_time:.2f}s")
+
+
+
     
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Scene Detection in Video')
-    parser.add_argument('video_path', type=str, help='Path to the input video file.')
-    parser.add_argument('--detector', type=str, choices=['content', 'adaptive', 'hash'], default='adaptive',
-                        help='Scene detection method to use. Options: content, adaptive, hash.')
-    
-    args = parser.parse_args()
-
-    video_path = args.video_path
-    detector_type = args.detector
-    load_dotenv()
-    base_dir = os.getenv("BASE_DIR")
-    output_dir = os.path.join(base_dir, "output", "scene_detection")
-    os.makedirs(output_dir, exist_ok=True)
-    video_name = os.path.basename(video_path).split('.')[0]
-    output_file = os.path.join(output_dir, f"{video_name}_scenes.txt")
-
-    scene_detector = SceneDetector(video_path, detector_type=detector_type)
-    scene_detector.initialize_scene_manager()
-    scene_detector.detect_scenes()
-    scene_detector.save_shots(output_file)
-    # scene_detector.print_shots()
