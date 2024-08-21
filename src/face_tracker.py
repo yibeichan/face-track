@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import cv2
@@ -58,7 +59,7 @@ class FaceTracker:
         # Iterate over each scene
         for index, row in tqdm(scene_data.iterrows(), total=scene_data.shape[0], desc="Tracking Faces Across Scenes"):
             frame_start, frame_end = int(row["Start Frame"]), int(row["End Frame"])
-            scene_name = f"scene_{index + 1}"
+            scene_id = f"scene_{index + 1}"
 
             n_frames = frame_end - frame_start + 1
             min_faces_per_cluster = max(n_frames // 2, 30)  # 30 is FPS
@@ -72,27 +73,40 @@ class FaceTracker:
                         face_data_for_scene.append((i, f["box"], f["confidence"]))
 
             tracked_faces = self.track_faces(face_data_for_scene, min_faces_per_cluster)
-            all_tracked_faces[scene_name] = tracked_faces
+            all_tracked_faces[scene_id] = tracked_faces
 
         return all_tracked_faces
 
 class FrameSelector:
-    def __init__(self, video_file, top_n=3):
+    def __init__(self, video_file, top_n=3, output_dir=None, save_images=True):
         self.video_file = video_file
         self.top_n = top_n
+        self.output_dir = output_dir
+        self.save_images = save_images
+
+        if save_images and output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
     @staticmethod
     def calculate_brightness(image):
         """Calculate the brightness of an image using GPU if available."""
-        image_tensor = torch.tensor(image, device=device, dtype=torch.float32)
+        image_tensor = torch.tensor(image, dtype=torch.float32)
         return torch.mean(image_tensor).item()
 
     @staticmethod
     def calculate_blurriness(image):
         """Calculate the blurriness of an image using GPU if available."""
-        image_tensor = torch.tensor(image, device=device, dtype=torch.float32)
-        laplacian = torch.tensor(cv2.Laplacian(image, cv2.CV_32F), device=device)
+        image_tensor = torch.tensor(image, dtype=torch.float32)
+        laplacian = torch.tensor(cv2.Laplacian(image, cv2.CV_32F))
         return torch.var(laplacian).item()
+
+    def save_cropped_face(self, face_image, scene_id, unique_face_id, frame_idx):
+        """Save the cropped face image to disk and return the relative path."""
+        if self.output_dir and self.save_images:
+            save_filename = f"{unique_face_id}_frame_{frame_idx}.jpg"
+            save_path = os.path.join(self.output_dir, save_filename)
+            cv2.imwrite(save_path, face_image)
+            return save_filename 
 
     def select_top_frames_per_face(self, tracked_data):
         """Select top frames per face based on confidence, size, brightness, and blurriness."""
@@ -103,9 +117,9 @@ class FrameSelector:
         total_faces = sum(len(faces) for faces in tracked_data.values())
 
         with tqdm(total=total_faces, desc="Processing Faces") as pbar:
-            for scene_name, faces in tracked_data.items():
-                selected_frames[scene_name] = []
-                
+            for scene_id, faces in tracked_data.items():
+                selected_frames[scene_id] = []
+
                 for face_id, face_group in enumerate(faces):
                     frame_scores = []
 
@@ -125,13 +139,19 @@ class FrameSelector:
                         x1, y1 = max(0, x1), max(0, y1)
                         x2, y2 = min(width, x2), min(height, y2)
 
+                        width_cropped = max(0, x2 - x1)
+                        height_cropped = max(0, y2 - y1)
+                        if width_cropped == 0 or height_cropped == 0:
+                            print(f"Warning: Invalid bounding box {face_coords} for frame {frame_idx}. Skipping.")
+                            continue
+
                         face_image = frame[y1:y2, x1:x2]
                         if face_image.size == 0:
                             print(f"Warning: Face image is empty for frame {frame_idx}. Skipping.")
                             continue
 
                         gray_face = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-                        face_size = (x2 - x1) * (y2 - y1)
+                        face_size = width_cropped * height_cropped
                         brightness = self.calculate_brightness(gray_face)
                         blurriness = self.calculate_blurriness(gray_face)
 
@@ -143,21 +163,26 @@ class FrameSelector:
                         # Combine features into a score
                         score = confidence + 0.5 * normalized_face_size + 0.3 * normalized_brightness - 0.2 * normalized_blurriness
 
+                        # Save the image and get its relative path
+                        relative_path = self.save_cropped_face(face_image, scene_id, f"{scene_id}_face_{face_id}", frame_idx)
+
                         frame_scores.append({
                             "frame_idx": frame_idx,
                             "total_score": score,
-                            "face_coord": face_coords
+                            "face_coord": face_coords,
+                            "image_path": relative_path  # Include the relative path in the JSON
                         })
 
                     if frame_scores:
                         top_frames = sorted(frame_scores, key=lambda x: x["total_score"], reverse=True)[:self.top_n]
 
-                        unique_face_id = f"{scene_name}_face_{face_id}"
+                        unique_face_id = f"{scene_id}_face_{face_id}"
                         global_unique_face_id = f"global_face_{global_face_id}"
-                        selected_frames[scene_name].append({
+
+                        selected_frames[scene_id].append({
                             "unique_face_id": unique_face_id,
                             "global_face_id": global_unique_face_id,
-                            "top_frames": top_frames
+                            "top_frames": [{"frame_idx": frame['frame_idx'], "total_score": frame['total_score'], "face_coord": frame['face_coord'], "image_path": frame['image_path']} for frame in top_frames]
                         })
 
                     global_face_id += 1

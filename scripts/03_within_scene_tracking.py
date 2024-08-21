@@ -9,16 +9,19 @@ import json
 sys.path.append("/om2/user/yibei/face-track/src")
 from face_tracker import FaceTracker, FrameSelector
 
-
-def save_selected_frames(selected_frames, output_file):
+def save2json(data, output_file):
     """Save the selected frames to a JSON file."""
-    with open(output_file, 'w') as f:
-        json.dump(selected_frames, f, indent=4)
+    try:
+        with open(output_file, 'w') as f:
+            json.dump(data, f, indent=4)
+    except IOError as e:
+        print(f"Error writing to file {output_file}: {e}")
+        sys.exit(1)
 
 def main(video_name, output_dir):
 
-    scene_file = os.path(scratch_dir, "output", "scene_detection", f"{video_name}.txt")
-    face_detection_file = os.path(scratch_dir, "output", "face_detection", f"{video_name}.json")
+    scene_file = os.path.join(scratch_dir, "output", "scene_detection", f"{video_name}.txt")
+    face_detection_file = os.path.join(scratch_dir, "output", "face_detection", f"{video_name}.json")
     video_file = os.path.join(scratch_dir, "data", "mkv2mp4", f"{video_name}.mp4")
     
     scene_data = pd.read_csv(scene_file, sep=",")
@@ -27,16 +30,17 @@ def main(video_name, output_dir):
 
     # Initialize the tracker and selector
     face_tracker = FaceTracker(iou_threshold=0.5)
-    frame_selector = FrameSelector(video_file=video_file, top_n=3)
+    frame_selector = FrameSelector(video_file=video_file, top_n=3, output_dir=output_dir)
 
     # Track faces across scenes
     tracked_faces = face_tracker.track_faces_across_scenes(scene_data, face_data)
+    output_file = os.path.join(output_dir, f"{video_name}_tracked_faces.json")
+    save2json(tracked_faces, output_file)
 
     # Select top frames per face
     selected_frames = frame_selector.select_top_frames_per_face(tracked_data=tracked_faces)
-
     output_file = os.path.join(output_dir, f"{video_name}_selected_frames_per_face.json")
-    save_selected_frames(selected_frames, output_file)
+    save2json(selected_frames, output_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face Detection in Video')
@@ -47,11 +51,12 @@ if __name__ == "__main__":
 
     load_dotenv()
     scratch_dir = os.getenv("SCRATCH_DIR")
+    base_dir = os.getenv("BASE_DIR")
     if scratch_dir is None: 
         print("Error: SCRATCH_DIR environment variable is not set.")
         sys.exit(1)
 
-    output_dir = os.path.join(scratch_dir, "output", "face_tracking")
+    output_dir = os.path.join(scratch_dir, "output", "face_tracking", f"{video_name}")
     os.makedirs(output_dir, exist_ok=True) 
 
     main(video_name, output_dir)
