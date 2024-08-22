@@ -100,7 +100,7 @@ class FrameSelector:
         laplacian = torch.tensor(cv2.Laplacian(image, cv2.CV_32F))
         return torch.var(laplacian).item()
 
-    def save_cropped_face(self, face_image, scene_id, unique_face_id, frame_idx):
+    def save_cropped_face(self, face_image, unique_face_id, frame_idx):
         """Save the cropped face image to disk and return the relative path."""
         if self.output_dir and self.save_images:
             save_filename = f"{unique_face_id}_frame_{frame_idx}.jpg"
@@ -116,7 +116,7 @@ class FrameSelector:
 
         total_faces = sum(len(faces) for faces in tracked_data.values())
 
-        with tqdm(total=total_faces, desc="Processing Faces") as pbar:
+        with tqdm(total=total_faces, desc="Select Top Frames Per Face") as pbar:
             for scene_id, faces in tracked_data.items():
                 selected_frames[scene_id] = []
 

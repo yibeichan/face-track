@@ -1,3 +1,4 @@
+import os
 import cv2
 import torch
 import numpy as np
@@ -28,7 +29,7 @@ class FaceEmbedder:
         face_tensor = (face_tensor - 127.5) / 128.0  # Normalize
         return face_tensor
 
-    def get_face_embeddings(self, selected_frames, base_dir):
+    def get_face_embeddings(self, selected_frames, image_dir):
         """Get embeddings for each cropped face image."""
         face_embeddings = []
 
@@ -38,20 +39,21 @@ class FaceEmbedder:
                 for face_data in faces:
                     embeddings = []
                     for frame_info in face_data['top_frames']:
-                        image_path = os.path.join(base_dir, frame_info['image_path'])  # Construct full path to image
+                        image_path = os.path.join(image_dir, frame_info['image_path'])  # Construct full path to image
                         face_tensor = self.load_image(image_path)
                         with torch.no_grad():
                             embedding = self.model(face_tensor).cpu().numpy()
                         embeddings.append({
                             "frame_idx": frame_info['frame_idx'],
-                            "embedding": embedding
+                            "embedding": embedding,
+                            "image_path": frame_info['image_path']
                         })
 
                     face_embeddings.append({
                         "scene_id": scene_id,
                         "unique_face_id": face_data['unique_face_id'],
                         "global_face_id": face_data['global_face_id'],
-                        "embeddings": embeddings
+                        "embeddings": embeddings  # Each embedding with its image path
                     })
 
                     # Update progress bar
@@ -64,26 +66,26 @@ class FaceClusterer:
         self.similarity_threshold = similarity_threshold
         self.max_iterations = max_iterations
 
-    def build_graph(self, face_embeddings) -> tuple:
+    def build_graph(self, face_embeddings):
         """Builds a graph where nodes represent embeddings, and edges represent similarities."""
         G = nx.Graph()
 
         # Flatten embeddings with identifiers into node_data
         node_data = [
-            (i, emb_info['embedding'], face_data, emb_info['frame_idx'])
+            (i, emb_info['embedding'], face_data, emb_info['frame_idx'], emb_info['image_path'])
             for i, face_data in enumerate(face_embeddings)
             for emb_info in face_data['embeddings']
         ]
         
         # Add nodes to the graph
-        for i, (face_idx, embedding, face_data, frame_idx) in enumerate(node_data):
-            G.add_node(i, face_idx=face_idx, embedding=embedding, face_data=face_data, frame_idx=frame_idx)
+        for i, (face_idx, embedding, face_data, frame_idx, image_path) in enumerate(node_data):
+            G.add_node(i, face_idx=face_idx, embedding=embedding, face_data=face_data, frame_idx=frame_idx, image_path=image_path)
         
         # Add edges based on maximum similarity between embeddings
         with tqdm(total=len(node_data)*(len(node_data)-1)//2, desc="Building Graph", unit="edge") as pbar:
             for i in range(len(node_data)):
                 for j in range(i + 1, len(node_data)):
-                    similarity = 1 - cosine(node_data[i][1], node_data[j][1])
+                    similarity = 1 - cosine(node_data[i][1].flatten(), node_data[j][1].flatten())  # Ensure embeddings are 1D
                     if similarity > self.similarity_threshold:
                         G.add_edge(i, j, weight=similarity)
                     pbar.update(1)
@@ -136,7 +138,12 @@ class FaceClusterer:
 
                     if new_similarity > existing_similarity:
                         # Move to the new cluster if similarity is higher
-                        consolidated_clusters[existing_cluster_id].remove(face_data)
+                        # Find the dictionary in the list with the same content
+                        for item in consolidated_clusters[existing_cluster_id]:
+                            if item == face_data:
+                                consolidated_clusters[existing_cluster_id].remove(item)
+                                break
+                        
                         if cluster_id not in consolidated_clusters:
                             consolidated_clusters[cluster_id] = []
                         consolidated_clusters[cluster_id].append(face_data)
@@ -155,7 +162,7 @@ class FaceClusterer:
 
     def _max_similarity(self, face_list: list, embedding: np.ndarray) -> float:
         """Helper function to calculate the maximum similarity of an embedding with a list of faces."""
-        similarities = [1 - cosine(face['embedding'], embedding) for face in face_list]
+        similarities = similarities = [1 - cosine(face['embedding'].flatten(), embedding.flatten()) for face in face_list]
         return max(similarities)
 
     def cluster_faces(self, face_embeddings: list) -> dict:
@@ -167,6 +174,7 @@ class FaceClusterer:
         for node_idx, label in labels.items():
             face_data = node_data[node_idx][2]
             frame_idx = node_data[node_idx][3]
+            image_path = node_data[node_idx][4]
 
             if label not in initial_clusters:
                 initial_clusters[label] = []
@@ -176,6 +184,7 @@ class FaceClusterer:
                 "unique_face_id": face_data['unique_face_id'], 
                 "global_face_id": face_data['global_face_id'],
                 "frame_idx": frame_idx,
+                "image_path": image_path,  # Include image path in the cluster data
                 "embedding": node_data[node_idx][1]
             })
 

@@ -1,11 +1,11 @@
 #!/bin/bash
 
-#SBATCH --job-name=within_scene_track
+#SBATCH --job-name=face_cluster
 #SBATCH --output=/om2/user/yibei/face-track/logs/%x_%j.out 
 #SBATCH --error=/om2/user/yibei/face-track/logs/%x_%j.err 
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
-#SBATCH --time=02:30:00 
+#SBATCH --time=00:10:00 
 #SBATCH --array=1-292
 #SBATCH --ntasks=1 
 #SBATCH --gres=gpu:1
@@ -24,4 +24,4 @@ TASK_ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $TASK_FILE)
 echo "Processing: $TASK_ID"
 
 cd /om2/user/yibei/face-track/scripts
-python 03_within_scene_tracking.py "${TASK_ID}"
+python 04_face_clustering.py "${TASK_ID}"
