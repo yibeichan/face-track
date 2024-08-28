@@ -1,12 +1,12 @@
 #!/bin/bash
 
-#SBATCH --job-name=within_scene_track
+#SBATCH --job-name=face_embedding
 #SBATCH --output=/om2/user/yibei/face-track/logs/%x_%j.out 
 #SBATCH --error=/om2/user/yibei/face-track/logs/%x_%j.err 
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
-#SBATCH --time=02:30:00 
-#SBATCH --array=5
+#SBATCH --time=00:15:00 
+#SBATCH --array=3,4
 #SBATCH --ntasks=1 
 #SBATCH --gres=gpu:1
 #SBATCH --mem=1G
@@ -17,11 +17,11 @@ source $HOME/miniconda3/etc/profile.d/conda.sh
 # Activate your Conda environment
 conda activate face-track
 
-TASK_FILE="/om2/user/yibei/face-track/data/episode_id.txt"
+seasons=("s01" "s02" "s03" "s04" "s05" "s06")
 
-TASK_ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $TASK_FILE)
+TASK_ID=${seasons[$SLURM_ARRAY_TASK_ID]}
 
 echo "Processing: $TASK_ID"
 
 cd /om2/user/yibei/face-track/scripts
-python 03_within_scene_tracking.py "${TASK_ID}"
+python 05_char_embedding.py "${TASK_ID}"

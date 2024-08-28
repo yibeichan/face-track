@@ -164,7 +164,7 @@ class FrameSelector:
                         score = confidence + 0.5 * normalized_face_size + 0.3 * normalized_brightness - 0.2 * normalized_blurriness
 
                         # Save the image and get its relative path
-                        relative_path = self.save_cropped_face(face_image, scene_id, f"{scene_id}_face_{face_id}", frame_idx)
+                        relative_path = self.save_cropped_face(face_image, f"{scene_id}_face_{face_id}", frame_idx)
 
                         frame_scores.append({
                             "frame_idx": frame_idx,
