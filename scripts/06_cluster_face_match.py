@@ -5,38 +5,29 @@ import numpy as np
 from dotenv import load_dotenv
 import argparse
 import re
+from collections import Counter
 
 def extract_season_episode(file_name):
     # Regular expression to capture 'sXX' and 'eXX' patterns
     match = re.search(r's(\d{2})e(\d{2})', file_name)
     
     if match:
-        s_id = f"s{match.group(1)}"  # Extract the season ID
-        e_id = int(match.group(2))   # Extract the episode ID as an integer
+        s_id = f"s{match.group(1)}" 
+        e_id = int(match.group(2))
         return s_id, e_id
     else:
         raise ValueError(f"Filename '{file_name}' does not contain a valid season and episode format")
 
 def get_episode_ranges(episode, total_episodes):
-    if episode <= 1:
+    if episode == 1:
         # Special case for the first episode, we can't look back
-        return [f"e01-e03"]
-    elif episode == 2:
-        # Special case for the second episode, we can only look back one episode
-        return [f"e01-e03", f"e02-e04"]
-    elif episode >= total_episodes:
+        return f"e01-e03"
+    elif episode == total_episodes:
         # Special case for the last episode, we can't look forward
-        return [f"e{total_episodes-2:02d}-e{total_episodes:02d}"]
-    elif episode == total_episodes - 1:
-        # Special case for the second-to-last episode, we can only look forward one episode
-        return [f"e{episode-2:02d}-e{episode:02d}", f"e{episode-1:02d}-e{episode+1:02d}"]
+        return f"e{total_episodes-2:02d}-e{total_episodes:02d}"
     else:
         # General case for most episodes
-        return [
-            f"e{episode-2:02d}-e{episode:02d}",
-            f"e{episode-1:02d}-e{episode+1:02d}",
-            f"e{episode:02d}-e{episode+2:02d}"
-        ]
+        return f"e{episode-1:02d}-e{episode+1:02d}"
 
 def reorganize_by_cluster(clustered_faces):
     clusters = {}
@@ -48,12 +39,6 @@ def reorganize_by_cluster(clustered_faces):
             clusters[cluster_id].append(face_data)
     return clusters
 
-def select_top_clusters(clusters, top_n=7):
-    cluster_sizes = [(cluster_id, len(faces)) for cluster_id, faces in clusters.items()]
-    sorted_clusters = sorted(cluster_sizes, key=lambda x: x[1], reverse=True)
-    top_clusters = {cluster_id: clusters[cluster_id] for cluster_id, _ in sorted_clusters[:top_n]}
-    return top_clusters
-
 def load_reference_embeddings(season, episode_range, ref_emb_dir):
     embeddings_path = os.path.join(ref_emb_dir, f"{season}_{episode_range}_char_*_embeddings.npy")
     embeddings_files = glob.glob(embeddings_path)
@@ -63,90 +48,60 @@ def load_reference_embeddings(season, episode_range, ref_emb_dir):
         embeddings[char_id] = np.load(file)
     return embeddings
 
-def compare_with_reference(cluster_embeddings, reference_embeddings):
-    similarities = []
+def identify_character(cluster_embeddings, character_dict, threshold):
+    character_scores = {char_id: 0 for char_id in character_dict.keys()}
+    assigned_characters = []
+
     for cluster_embedding in cluster_embeddings:
-        cluster_embedding = np.array(cluster_embedding)
-        # Compute similarity for each of the 3 embeddings
-        for emb in cluster_embedding:
-            emb = np.array(emb).flatten()
-            cosine_sim = np.dot(reference_embeddings, emb) / (np.linalg.norm(reference_embeddings, axis=1) * np.linalg.norm(emb))
-            similarities.append(np.max(cosine_sim))
-    
-    return np.mean(similarities)
-
-def compare_clusters_with_reference(clusters, season, episode, total_episodes, output_dir):
-    episode_ranges = get_episode_ranges(episode, total_episodes)
-    results = {}
-
-    for episode_range in episode_ranges:
-        reference_embeddings = load_reference_embeddings(season, episode_range, output_dir)
-        
-        for cluster_id, cluster_data in clusters.items():
-            cluster_embeddings = np.array(cluster_data['embeddings'])
-            similarities = {char_id: compare_with_reference(cluster_embeddings, ref_embs) for char_id, ref_embs in reference_embeddings.items()}
-    
-            # Assign the character with the highest similarity
-            top_char = max(similarities, key=similarities.get)
-            results[cluster_id] = top_char
-    return results
-
-def identify_characters(top_clusters, reference_files):
-    character_assignments = {}
-    for cluster_id, faces in top_clusters.items():
-        best_character = None
+        cluster_embedding = np.array(cluster_embedding).flatten()
         best_similarity = -1
-        
-        cluster_embeddings = [embedding for face in faces for embedding in face['embeddings']]
-        
-        for ref_file in reference_files:
-            reference_embeddings = np.load(ref_file)
-            similarity = compare_with_reference(cluster_embeddings, reference_embeddings)
-            if similarity > best_similarity:
-                best_similarity = similarity
-                best_character = ref_file  # Or extract character ID from file name
-        
-        character_assignments[cluster_id] = (best_character, best_similarity)
-    return character_assignments
+        best_char_id = "unknown"
 
+        # Calculate similarity with each character's embeddings
+        for char_id, char_embeddings in character_dict.items():
+            for ref_embedding in char_embeddings:
+                ref_embedding = np.array(ref_embedding).flatten()
+                
+                # Calculate cosine similarity
+                cosine_sim = np.dot(cluster_embedding, ref_embedding) / (np.linalg.norm(cluster_embedding) * np.linalg.norm(ref_embedding))
+                
+                if cosine_sim > threshold and cosine_sim > best_similarity:
+                    best_similarity = cosine_sim
+                    best_char_id = char_id
+
+        assigned_characters.append(best_char_id)
+        if best_char_id != "unknown":
+            character_scores[best_char_id] += 1
+
+    # Determine the most frequently assigned character
+    character_count = Counter(assigned_characters)
+    most_common_char, count = character_count.most_common(1)[0]
+
+    # Check if the most assigned character appears more than half the time
+    if most_common_char != "unknown" and count > len(cluster_embeddings) / 2:
+        return most_common_char
+    else:
+        return "unknown"
+    
 def main(episode_id, clustered_faces, ref_emb_dir, output_dir):
-    # Step 1: Reorganize by cluster
     clusters = reorganize_by_cluster(clustered_faces)
     
-    similarity_threshold = 0.6
+    threshold = 0.6
 
-    # Step 2: Select top clusters
-    top_clusters = select_top_clusters(clusters, top_n=7)
-
-    # Step 3: Load relevant reference embeddings
     season, episode = extract_season_episode(episode_id)
-    episode_ranges = get_episode_ranges(episode, total_episodes=24)
-    reference_embeddings = {}
-    for episode_range in episode_ranges:
-        ref_embs = load_reference_embeddings(season, episode_range, ref_emb_dir)
-        reference_embeddings.update(ref_embs)
+    episode_range = get_episode_ranges(episode, total_episodes=24)
+    reference_embeddings = load_reference_embeddings(season, episode_range, ref_emb_dir)
 
-    # Step 4: Compare clusters with reference embeddings
     cluster_char_assignments = {}
-    for cluster_id, cluster_faces in top_clusters.items():
-        cluster_embeddings = [face_data['embeddings'] for face_data in cluster_faces]
-        cluster_char_assignments[cluster_id] = {}
-        for char_id, ref_embs in reference_embeddings.items():
-            similarity_score = compare_with_reference(cluster_embeddings, ref_embs)
-            cluster_char_assignments[cluster_id][char_id] = similarity_score
+    for cluster_id, faces in clusters.items():
 
-    # Step 5: Assign characters to clusters
-    final_assignments = {}
-    for cluster_id, similarity_scores in cluster_char_assignments.items():
-        best_char_id = max(similarity_scores, key=similarity_scores.get)
-        if similarity_scores[best_char_id] > similarity_threshold:
-            final_assignments[cluster_id] = best_char_id
-        else:
-            final_assignments[cluster_id] = "unknown"
+        cluster_embeddings = [embedding for face in faces for embedding in face['embeddings']]
+        best_character = identify_character(cluster_embeddings, reference_embeddings, threshold)
+        print(f"Cluster {cluster_id}: Best Character = {best_character}, with {len(faces)} faces")
+        cluster_char_assignments[cluster_id] = best_character
 
-    # Step 6: Save results
     with open(os.path.join(output_dir, f"{episode_id}_cluster-face_matching.json"), 'w') as f:
-        json.dump(final_assignments, f)
+        json.dump(cluster_char_assignments, f)
 
 if __name__ == "__main__":
     load_dotenv()

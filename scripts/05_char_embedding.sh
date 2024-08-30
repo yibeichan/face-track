@@ -6,7 +6,7 @@
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
 #SBATCH --time=00:15:00 
-#SBATCH --array=3,4
+#SBATCH --array=0-5
 #SBATCH --ntasks=1 
 #SBATCH --gres=gpu:1
 #SBATCH --mem=1G

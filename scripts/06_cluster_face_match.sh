@@ -6,7 +6,7 @@
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
 #SBATCH --time=00:10:00 
-#SBATCH --array=2-292
+#SBATCH --array=1-292
 #SBATCH --ntasks=1 
 #SBATCH --mem=1G
 #SBATCH --mail-type=FAIL,END

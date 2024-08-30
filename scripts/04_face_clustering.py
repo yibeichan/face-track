@@ -70,7 +70,7 @@ def save_json(data, output_file):
 
 def main(video_name, face_selection_file, output_dir):
     face_embedder = FaceEmbedder()
-    face_clusterer = FaceClusterer(similarity_threshold=0.6, max_iterations=100)
+    face_clusterer = FaceClusterer(similarity_threshold=0.65, max_iterations=100)
 
     selected_faces = read_json(face_selection_file)
     image_dir = os.path.dirname(face_selection_file)
