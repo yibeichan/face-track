@@ -62,7 +62,7 @@ class FaceTracker:
             scene_id = f"scene_{index + 1}"
 
             n_frames = frame_end - frame_start + 1
-            min_faces_per_cluster = max(n_frames // 2, 30)  # 30 is FPS
+            min_faces_per_cluster = max(n_frames // 2, min(n_frames, 30))  # 30 is FPS
 
             face_data_for_scene = []
             

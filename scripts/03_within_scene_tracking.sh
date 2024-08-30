@@ -6,8 +6,8 @@
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
 #SBATCH --time=02:30:00 
-#SBATCH --array=5
-#SBATCH --ntasks=1 
+#SBATCH --array=1-292
+#SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=1G
 #SBATCH --mail-type=FAIL,END
