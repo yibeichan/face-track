@@ -10,8 +10,22 @@ from tqdm import tqdm
 import argparse
 
 def extract_episode_number(file_path, season_id):
+    """
+    Extract the episode number from a file path.
+    
+    Parameters
+    ----------
+    file_path : str
+        The file path to extract the episode number from.
+    season_id : str
+        The season ID to extract the episode number from.
+    
+    Returns
+    -------
+    int or None
+        The episode number as an integer if successfully extracted, otherwise None.
+    """
     try:
-        # Assuming the episode number directly follows "e" in the filename
         episode_part = file_path.split(f'{season_id}e')[1][:2]
         return int(episode_part)
     except (IndexError, ValueError) as e:
@@ -19,6 +33,23 @@ def extract_episode_number(file_path, season_id):
         return None
 
 def get_face_embedding(image_path, model, device):
+    """
+    Compute the face embedding of an image using a FaceNet model.
+
+    Parameters
+    ----------
+    image_path : str
+        The path to the image file.
+    model : InceptionResnetV1
+        The FaceNet model to use for computing face embeddings.
+    device : torch.device
+        The device to run the model on.
+
+    Returns
+    -------
+    embedding : np.ndarray
+        The 512-dimensional face embedding of the image, or a vector of NaNs if an error occurred.
+    """
     try:
         face_tensor = load_image(image_path).to(device)
         with torch.no_grad():
@@ -43,6 +74,29 @@ def preprocess_face(face_image):
     return face_tensor
 
 def main(input_dir, season_id, save_dir, start_episode=None, end_episode=None):
+    """
+    Compute face embeddings for all characters in a given range of episodes.
+
+    Parameters
+    ----------
+    input_dir : str
+        The directory containing the face images.
+    season_id : int
+        The season ID (1-6).
+    save_dir : str
+        The directory to save the face embeddings.
+    start_episode : int, optional
+        The first episode to process. If not provided, all episodes in the input directory are processed.
+    end_episode : int, optional
+        The last episode to process. If not provided, all episodes in the input directory are processed.
+
+    Notes
+    -----
+    The script assumes that the face images are stored in the input directory with the following naming convention:
+        friends_<season_id>e<episode_number>*char_<character_id>.jpg
+    For each episode window (of size 2), the script collects images for all characters, checks the minimum image count, and
+    processes the embeddings for each character.
+    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = InceptionResnetV1(pretrained='vggface2').eval().to(device)
     
@@ -61,11 +115,10 @@ def main(input_dir, season_id, save_dir, start_episode=None, end_episode=None):
         char_images = {char_id: [] for char_id in range(6)}
         
         # Determine the end of the episode window
-        if episode + 3 <= end_episode:
-            episode_window_end = episode + 3
+        if episode + 2 <= end_episode:
+            episode_window_end = episode + 2
         else:
             episode_window_end = end_episode
-        
         # Collect images for the episode window
         for e in range(episode, episode_window_end):
             for char_id in range(6):
@@ -97,7 +150,7 @@ def main(input_dir, season_id, save_dir, start_episode=None, end_episode=None):
             embeddings = np.array(embeddings)
             print(f"Embeddings shape: {embeddings.shape}")
             filename = os.path.join(save_dir, f'{season_id}_e{episode:02d}-e{episode_window_end-1:02d}_char_{char_id}_embeddings.npy')
-            # np.save(filename, embeddings)
+            np.save(filename, embeddings)
             print(f"Saved {filename}")
 
         
@@ -115,7 +168,8 @@ if __name__ == "__main__":
 
     base_dir = os.getenv("BASE_DIR")
     scratch_dir = os.getenv("SCRATCH_DIR")
-    output_dir = os.path.join(scratch_dir, "output")
+    nese_dir = os.getenv("NESE_DIR")
+    output_dir = os.path.join(nese_dir, "output")
     input_dir = os.path.join(output_dir, "char_face")
     save_dir = os.path.join(output_dir, "char_ref_embs")
 
