@@ -30,7 +30,7 @@ def main(video_name, nese_dir, output_dir):
 
     # Initialize the tracker and selector
     face_tracker = FaceTracker(iou_threshold=0.5)
-    frame_selector = FrameSelector(video_file=video_file, top_n=5, output_dir=output_dir)
+    frame_selector = FrameSelector(video_file=video_file, top_n=3, output_dir=output_dir)
 
     # Track faces across scenes
     tracked_faces = face_tracker.track_faces_across_scenes(scene_data, face_data)
