@@ -71,40 +71,48 @@ def find_nearest_exemplar(cluster_embeddings):
     return cluster_embeddings[exemplar_idx]
 
 def character_similarity_distribution(character_embeddings):
-    """Calculate the mean and std deviation of a character's internal embedding similarity."""
+    """Calculate the mean and standard deviation of internal similarity for a character."""
     char_matrix = np.array([np.array(embedding).flatten() for embedding in character_embeddings])
     similarities = cosine_similarity(char_matrix)
     internal_mean = np.mean(similarities)
     internal_std = np.std(similarities)
     return internal_mean, internal_std
 
-def dynamic_threshold(internal_mean, internal_std):
-    """Set a dynamic threshold based on character's internal similarity."""
-    # Example: stricter threshold for tightly clustered characters
-    return internal_mean - 0.5 * internal_std  # Adjust this factor as needed
+def dynamic_threshold(internal_mean, internal_std, scale_factor=0.5):
+    """Set a dynamic threshold based on the character's internal similarity distribution."""
+    return internal_mean - scale_factor * internal_std
 
-def identify_character(cluster_embeddings, character_dict):
-    # Step 1: Find the exemplar of the cluster (or use all embeddings as needed)
+def top_percent_average(similarities, percent=10, top_k_fallback=3):
+    """Compute the average of the top N% of similarities, with a fallback to top-k if necessary."""
+    num_top = max(1, int(len(similarities) * percent / 100))
+    if num_top < top_k_fallback:  # Fallback to top-k if not enough embeddings
+        num_top = top_k_fallback
+    top_similarities = np.sort(similarities)[-num_top:]
+    return np.mean(top_similarities)
+
+def identify_character(cluster_embeddings, character_dict, scale_factor=0.5, top_k_fallback=3):
+    """Identify the best matching character for a cluster based on exemplar, dynamic threshold, and top similarities."""
+    # Step 1: Find the exemplar of the cluster
     cluster_matrix = np.array([np.array(embedding).flatten() for embedding in cluster_embeddings])
     cluster_exemplar = find_nearest_exemplar(cluster_matrix)
 
     best_similarity = -1
     best_char_id = "unknown"
 
-    # Step 2: Compare the exemplar with each character's embeddings
+    # Step 2: Compare the exemplar to each character's embeddings
     for char_id, char_embeddings in character_dict.items():
         # Compute internal similarity for this character
         internal_mean, internal_std = character_similarity_distribution(char_embeddings)
         
-        # Compute dynamic threshold
-        threshold = dynamic_threshold(internal_mean, internal_std)
-        print(f"Dynamic threshold for character {char_id}: internal_mean={internal_mean}, internal_std={internal_std}, threshold={threshold}")
+        # Compute dynamic threshold for this character
+        threshold = dynamic_threshold(internal_mean, internal_std, scale_factor)
+
         # Compare the cluster exemplar with the character's embeddings
         char_matrix = np.array([np.array(embedding).flatten() for embedding in char_embeddings])
         similarities = cosine_similarity(cluster_exemplar.reshape(1, -1), char_matrix).flatten()
 
-        # Use the top-k or top 10% approach, or a combination with the dynamic threshold
-        avg_similarity = np.mean(np.sort(similarities)[-int(0.1 * len(similarities)):])  # Top 10%
+        # Use top 10% averaging, with a fallback to top-k if necessary
+        avg_similarity = top_percent_average(similarities, percent=10, top_k_fallback=top_k_fallback)
 
         if avg_similarity > threshold and avg_similarity > best_similarity:
             best_similarity = avg_similarity
