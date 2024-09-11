@@ -11,6 +11,22 @@ class FaceTracker:
     def __init__(self, iou_threshold=0.5):
         self.iou_threshold = iou_threshold
 
+    def expand_box(self, box, expansion_ratio=0.1):
+        """Expand the bounding box by a given ratio."""
+        width = box[2] - box[0]
+        height = box[3] - box[1]
+        
+        x_expand = width * expansion_ratio
+        y_expand = height * expansion_ratio
+
+        expanded_box = [
+            box[0] - x_expand,  # Left
+            box[1] - y_expand,  # Top
+            box[2] + x_expand,  # Right
+            box[3] + y_expand   # Bottom
+        ]
+        return expanded_box
+
     @staticmethod
     def calculate_iou(box1, box2):
         """Calculate Intersection over Union (IoU) between two bounding boxes."""
@@ -39,8 +55,9 @@ class FaceTracker:
             face_added = False
 
             for cluster in clusters:
+
                 last_face_in_cluster = cluster[-1]["face"]
-                iou = self.calculate_iou(last_face_in_cluster, face)
+                iou = self.calculate_iou(self.expand_box(last_face_in_cluster), self.expand_box(face))
 
                 if iou > self.iou_threshold:
                     cluster.append({"frame": frame_number, "face": face, "conf": conf})
@@ -56,13 +73,12 @@ class FaceTracker:
         """Track faces across all scenes in a video."""
         all_tracked_faces = {}
 
-        # Iterate over each scene
         for index, row in tqdm(scene_data.iterrows(), total=scene_data.shape[0], desc="Tracking Faces Across Scenes"):
             frame_start, frame_end = int(row["Start Frame"]), int(row["End Frame"])
             scene_id = f"scene_{index + 1}"
 
             n_frames = frame_end - frame_start + 1
-            min_faces_per_cluster = max(n_frames // 2, min(n_frames, 30))  # 30 is FPS
+            min_faces_per_cluster = min(max(n_frames // 2, 15), 30)  # 30 is FPS
 
             face_data_for_scene = []
             
@@ -71,6 +87,10 @@ class FaceTracker:
                 if len(faces) != 0:
                     for f in faces:
                         face_data_for_scene.append((i, f["box"], f["confidence"]))
+
+            # Skip scenes with no faces detected
+            if not face_data_for_scene:
+                continue
 
             tracked_faces = self.track_faces(face_data_for_scene, min_faces_per_cluster)
             all_tracked_faces[scene_id] = tracked_faces
