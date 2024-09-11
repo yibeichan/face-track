@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import argparse
 import re
 from collections import Counter
+from sklearn.metrics.pairwise import cosine_similarity
 
 def extract_season_episode(file_name):
     # Regular expression to capture 'sXX' and 'eXX' patterns
@@ -21,13 +22,16 @@ def extract_season_episode(file_name):
 def get_episode_ranges(episode, total_episodes):
     if episode == 1:
         # Special case for the first episode, we can't look back
-        return f"e01-e03"
+        return [f"e01-e02"]  # Returning a list with one range
     elif episode == total_episodes:
         # Special case for the last episode, we can't look forward
-        return f"e{total_episodes-2:02d}-e{total_episodes:02d}"
+        return [f"e{total_episodes-1:02d}-e{total_episodes:02d}"]  # List with one range
     else:
-        # General case for most episodes
-        return f"e{episode-1:02d}-e{episode+1:02d}"
+        # General case for episodes in the middle
+        return [
+            f"e{episode:02d}-e{episode+1:02d}",  # Current episode and the next one
+            f"e{episode-1:02d}-e{episode:02d}"   # Previous episode and current one
+        ]
 
 def reorganize_by_cluster(clustered_faces):
     clusters = {}
@@ -40,63 +44,92 @@ def reorganize_by_cluster(clustered_faces):
     return clusters
 
 def load_reference_embeddings(season, episode_range, ref_emb_dir):
-    embeddings_path = os.path.join(ref_emb_dir, f"{season}_{episode_range}_char_*_embeddings.npy")
-    embeddings_files = glob.glob(embeddings_path)
+    embeddings_files = []
+    for episode in episode_range:
+        embeddings_path = os.path.join(ref_emb_dir, f"{season}_{episode}_char_*_embeddings.npy")
+        found_files = glob.glob(embeddings_path)
+        if not found_files:
+            print(f"Warning: No embedding files found for episode {episode} in {ref_emb_dir}.")
+        embeddings_files.extend(found_files)  # Extend to flatten the list of files
+
     embeddings = {}
     for file in embeddings_files:
-        char_id = os.path.basename(file).split('_char_')[1].split('_')[0]
+        try:
+            char_id = os.path.basename(file).split('_char_')[1].split('_')[0]
+        except IndexError:
+            print(f"Error parsing character ID from filename: {file}")
+            continue  # Skip the file if the naming is incorrect
         embeddings[char_id] = np.load(file)
     return embeddings
 
-def identify_character(cluster_embeddings, character_dict, threshold):
-    character_scores = {char_id: 0 for char_id in character_dict.keys()}
-    assigned_characters = []
+def find_nearest_exemplar(cluster_embeddings):
+    """Find the exemplar (medoid) that is closest to all other points in the cluster."""
+    similarities = cosine_similarity(cluster_embeddings)
+    total_similarities = np.sum(similarities, axis=1)
+    # The exemplar is the embedding with the highest total similarity to others in the cluster
+    exemplar_idx = np.argmax(total_similarities)
+    return cluster_embeddings[exemplar_idx]
 
-    for cluster_embedding in cluster_embeddings:
-        cluster_embedding = np.array(cluster_embedding).flatten()
-        best_similarity = -1
-        best_char_id = "unknown"
+def character_similarity_distribution(character_embeddings):
+    """Calculate the mean and std deviation of a character's internal embedding similarity."""
+    char_matrix = np.array([np.array(embedding).flatten() for embedding in character_embeddings])
+    similarities = cosine_similarity(char_matrix)
+    internal_mean = np.mean(similarities)
+    internal_std = np.std(similarities)
+    return internal_mean, internal_std
 
-        # Calculate similarity with each character's embeddings
-        for char_id, char_embeddings in character_dict.items():
-            for ref_embedding in char_embeddings:
-                ref_embedding = np.array(ref_embedding).flatten()
-                
-                # Calculate cosine similarity
-                cosine_sim = np.dot(cluster_embedding, ref_embedding) / (np.linalg.norm(cluster_embedding) * np.linalg.norm(ref_embedding))
-                
-                if cosine_sim > threshold and cosine_sim > best_similarity:
-                    best_similarity = cosine_sim
-                    best_char_id = char_id
+def dynamic_threshold(internal_mean, internal_std):
+    """Set a dynamic threshold based on character's internal similarity."""
+    # Example: stricter threshold for tightly clustered characters
+    return internal_mean - 0.5 * internal_std  # Adjust this factor as needed
 
-        assigned_characters.append(best_char_id)
-        if best_char_id != "unknown":
-            character_scores[best_char_id] += 1
+def identify_character(cluster_embeddings, character_dict):
+    # Step 1: Find the exemplar of the cluster (or use all embeddings as needed)
+    cluster_matrix = np.array([np.array(embedding).flatten() for embedding in cluster_embeddings])
+    cluster_exemplar = find_nearest_exemplar(cluster_matrix)
 
-    # Determine the most frequently assigned character
-    character_count = Counter(assigned_characters)
-    most_common_char, count = character_count.most_common(1)[0]
+    best_similarity = -1
+    best_char_id = "unknown"
 
-    # Check if the most assigned character appears more than half the time
-    if most_common_char != "unknown" and count > len(cluster_embeddings) / 2:
-        return most_common_char
-    else:
-        return "unknown"
+    # Step 2: Compare the exemplar with each character's embeddings
+    for char_id, char_embeddings in character_dict.items():
+        # Compute internal similarity for this character
+        internal_mean, internal_std = character_similarity_distribution(char_embeddings)
+        
+        # Compute dynamic threshold
+        threshold = dynamic_threshold(internal_mean, internal_std)
+        print(f"Dynamic threshold for character {char_id}: internal_mean={internal_mean}, internal_std={internal_std}, threshold={threshold}")
+        # Compare the cluster exemplar with the character's embeddings
+        char_matrix = np.array([np.array(embedding).flatten() for embedding in char_embeddings])
+        similarities = cosine_similarity(cluster_exemplar.reshape(1, -1), char_matrix).flatten()
+
+        # Use the top-k or top 10% approach, or a combination with the dynamic threshold
+        avg_similarity = np.mean(np.sort(similarities)[-int(0.1 * len(similarities)):])  # Top 10%
+
+        if avg_similarity > threshold and avg_similarity > best_similarity:
+            best_similarity = avg_similarity
+            best_char_id = char_id
+
+    return best_char_id
     
 def main(episode_id, clustered_faces, ref_emb_dir, output_dir):
     clusters = reorganize_by_cluster(clustered_faces)
     
-    threshold = 0.6
-
     season, episode = extract_season_episode(episode_id)
-    episode_range = get_episode_ranges(episode, total_episodes=24)
+    if season == "s03":
+        total_episode = 25
+    elif season == "s04" or season == "s05":
+        total_episode = 23
+    else:
+        total_episode = 24
+    episode_range = get_episode_ranges(episode, total_episode)
+
     reference_embeddings = load_reference_embeddings(season, episode_range, ref_emb_dir)
 
     cluster_char_assignments = {}
     for cluster_id, faces in clusters.items():
-
         cluster_embeddings = [embedding for face in faces for embedding in face['embeddings']]
-        best_character = identify_character(cluster_embeddings, reference_embeddings, threshold)
+        best_character = identify_character(cluster_embeddings, reference_embeddings)
         print(f"Cluster {cluster_id}: Best Character = {best_character}, with {len(faces)} faces")
         cluster_char_assignments[cluster_id] = best_character
 
@@ -111,8 +144,10 @@ if __name__ == "__main__":
     episode_id = args.episode_id
 
     scratch_dir = os.getenv("SCRATCH_DIR")
-    cluster_file = os.path.join(scratch_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
-    ref_emb_dir = os.path.join(scratch_dir, "output", "char_ref_embs")
+    nese_dir = os.getenv("NESE_DIR")
+
+    cluster_file = os.path.join(nese_dir, "output", "face_clustering_old", f"{episode_id}_matched_faces_with_clusters.json")
+    ref_emb_dir = os.path.join(nese_dir, "output", "char_ref_embs")
     output_dir = os.path.join(scratch_dir, "output", "cluster_face_matching")
 
     if not os.path.exists(output_dir):
