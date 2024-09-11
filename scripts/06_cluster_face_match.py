@@ -20,18 +20,13 @@ def extract_season_episode(file_name):
         raise ValueError(f"Filename '{file_name}' does not contain a valid season and episode format")
 
 def get_episode_ranges(episode, total_episodes):
-    if episode == 1:
-        # Special case for the first episode, we can't look back
-        return [f"e01-e02"]  # Returning a list with one range
-    elif episode == total_episodes:
+    if episode == total_episodes:
         # Special case for the last episode, we can't look forward
-        return [f"e{total_episodes-1:02d}-e{total_episodes:02d}"]  # List with one range
+        return f"e{total_episodes-1:02d}-e{total_episodes:02d}"  # List with one range
     else:
         # General case for episodes in the middle
-        return [
-            f"e{episode:02d}-e{episode+1:02d}",  # Current episode and the next one
-            f"e{episode-1:02d}-e{episode:02d}"   # Previous episode and current one
-        ]
+        return f"e{episode:02d}-e{episode+1:02d}"  # Current episode and the next one
+
 
 def reorganize_by_cluster(clustered_faces):
     clusters = {}
@@ -45,12 +40,11 @@ def reorganize_by_cluster(clustered_faces):
 
 def load_reference_embeddings(season, episode_range, ref_emb_dir):
     embeddings_files = []
-    for episode in episode_range:
-        embeddings_path = os.path.join(ref_emb_dir, f"{season}_{episode}_char_*_embeddings.npy")
-        found_files = glob.glob(embeddings_path)
-        if not found_files:
-            print(f"Warning: No embedding files found for episode {episode} in {ref_emb_dir}.")
-        embeddings_files.extend(found_files)  # Extend to flatten the list of files
+    embeddings_path = os.path.join(ref_emb_dir, f"{season}_{episode_range}_char_*_embeddings.npy")
+    found_files = glob.glob(embeddings_path)
+    if not found_files:
+        print(f"Warning: No embedding files found for episode {episode_range} in {ref_emb_dir}.")
+    embeddings_files.extend(found_files)  # Extend to flatten the list of files
 
     embeddings = {}
     for file in embeddings_files:
@@ -154,7 +148,7 @@ if __name__ == "__main__":
     scratch_dir = os.getenv("SCRATCH_DIR")
     nese_dir = os.getenv("NESE_DIR")
 
-    cluster_file = os.path.join(nese_dir, "output", "face_clustering_old", f"{episode_id}_matched_faces_with_clusters.json")
+    cluster_file = os.path.join(nese_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
     ref_emb_dir = os.path.join(nese_dir, "output", "char_ref_embs")
     output_dir = os.path.join(scratch_dir, "output", "cluster_face_matching")
 
@@ -165,4 +159,3 @@ if __name__ == "__main__":
         clustered_data = json.load(f)
 
     main(episode_id, clustered_data, ref_emb_dir, output_dir)
-    
