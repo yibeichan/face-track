@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import networkx as nx
 from tqdm import tqdm
-from scipy.spatial.distance import cosine
+from scipy.spatial.distance import cosine, cdist
 from facenet_pytorch import InceptionResnetV1
 
 class FaceEmbedder:
@@ -121,44 +121,83 @@ class FaceClusterer:
         return labels
 
     def consolidate_clusters(self, initial_clusters: dict) -> dict:
-        """Consolidate clusters so that each face is assigned to the cluster with the highest similarity."""
-        consolidated_clusters = {}
-        face_to_cluster = {}
-
+        """Consolidate clusters by assigning each face to the best cluster among its initial assignments."""
+        # Map to hold the best cluster assignment for each unique_face_id
+        face_best_assignment = {}
+        face_embeddings = {}
+        face_data_map = {}
+        
+        # Step 1: Collect all clusters and embeddings for each unique_face_id
         for cluster_id, face_list in initial_clusters.items():
             for face_data in face_list:
                 unique_face_id = face_data['unique_face_id']
                 embedding = face_data['embedding']
-
-                if unique_face_id in face_to_cluster:
-                    # Already assigned, compare similarities
-                    existing_cluster_id = face_to_cluster[unique_face_id]
-                    existing_similarity = self._max_similarity(consolidated_clusters[existing_cluster_id], embedding)
-                    new_similarity = self._max_similarity(face_list, embedding)
-
-                    if new_similarity > existing_similarity:
-                        # Move to the new cluster if similarity is higher
-                        # Find the dictionary in the list with the same content
-                        for item in consolidated_clusters[existing_cluster_id]:
-                            if item == face_data:
-                                consolidated_clusters[existing_cluster_id].remove(item)
-                                break
-                        
-                        if cluster_id not in consolidated_clusters:
-                            consolidated_clusters[cluster_id] = []
-                        consolidated_clusters[cluster_id].append(face_data)
-                        face_to_cluster[unique_face_id] = cluster_id
-                    else:
-                        # Keep in the existing cluster
-                        consolidated_clusters[existing_cluster_id].append(face_data)
-                else:
-                    # Assign to this cluster
-                    if cluster_id not in consolidated_clusters:
-                        consolidated_clusters[cluster_id] = []
-                    consolidated_clusters[cluster_id].append(face_data)
-                    face_to_cluster[unique_face_id] = cluster_id
-
+                
+                if unique_face_id not in face_embeddings:
+                    face_embeddings[unique_face_id] = []
+                    face_data_map[unique_face_id] = []
+                face_embeddings[unique_face_id].append(embedding)
+                face_data_map[unique_face_id].append((cluster_id, face_data))
+        
+        # Step 2: For each unique_face_id, consider only the clusters it was assigned to
+        for unique_face_id, embeddings in face_embeddings.items():
+            assigned_clusters = set(cluster_id for cluster_id, _ in face_data_map[unique_face_id])
+            print(f"Unique Face ID: {unique_face_id}, Assigned Clusters: {assigned_clusters}")
+            if len(assigned_clusters) == 1:
+                # All embeddings assigned to the same cluster, no need to compute similarities
+                best_cluster_id = next(iter(assigned_clusters))
+            else:
+                embeddings = np.array(embeddings)
+                if embeddings.ndim == 3 and embeddings.shape[1] == 1:
+                    embeddings = embeddings.reshape(embeddings.shape[0], embeddings.shape[2])
+                
+                # Ensure embeddings is a 2D array
+                if embeddings.ndim == 1:
+                    embeddings = embeddings.reshape(1, -1)
+                
+                max_avg_similarity = -1
+                best_cluster_id = None
+                
+                for cluster_id in assigned_clusters:
+                    # Get embeddings of the cluster
+                    cluster_embeddings = []
+                    for face_data in initial_clusters[cluster_id]:
+                        cluster_embeddings.append(face_data['embedding'])
+                    cluster_embeddings = np.array(cluster_embeddings)
+                    
+                    # Reshape cluster_embeddings if necessary
+                    if cluster_embeddings.ndim == 3 and cluster_embeddings.shape[1] == 1:
+                        cluster_embeddings = cluster_embeddings.reshape(cluster_embeddings.shape[0], cluster_embeddings.shape[2])
+                    
+                    # Ensure cluster_embeddings is a 2D array
+                    if cluster_embeddings.ndim == 1:
+                        cluster_embeddings = cluster_embeddings.reshape(1, -1)
+                    
+                    # Step 3: Compute average similarity between face embeddings and cluster embeddings
+                    similarities = 1 - cdist(embeddings, cluster_embeddings, 'cosine')
+                    avg_similarity = np.mean(similarities)
+                    
+                    if avg_similarity > max_avg_similarity:
+                        max_avg_similarity = avg_similarity
+                        best_cluster_id = cluster_id
+            
+            # Assign the face to the best cluster
+            face_best_assignment[unique_face_id] = best_cluster_id
+        
+        # Step 4: Build consolidated clusters based on best assignments
+        consolidated_clusters = {}
+        for unique_face_id, best_cluster_id in face_best_assignment.items():
+            if best_cluster_id not in consolidated_clusters:
+                consolidated_clusters[best_cluster_id] = []
+            
+            # Add all face_data instances for this unique_face_id to the best cluster
+            for cluster_id, face_data in face_data_map[unique_face_id]:
+                # Avoid duplicates
+                if face_data not in consolidated_clusters[best_cluster_id]:
+                    consolidated_clusters[best_cluster_id].append(face_data)
+        
         return consolidated_clusters
+
 
     def _max_similarity(self, face_list: list, embedding: np.ndarray) -> float:
         """Helper function to calculate the maximum similarity of an embedding with a list of faces."""

@@ -16,17 +16,19 @@ def read_json_file(file_path):
 def generate_file_path(base_dir, *paths):
     return os.path.join(base_dir, *paths)
 
-def process_episode(episode_id, scratch_dir, save_dir):
+def process_episode(episode_id, nese_dir, save_dir):
     try:
-        tracked_file = generate_file_path(scratch_dir, "output", "face_tracking", episode_id, f"{episode_id}_selected_frames_per_face.json")
-        cluster_file = generate_file_path(scratch_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
-        matched_file = generate_file_path(scratch_dir, "output", "cluster_face_matching", f"{episode_id}_cluster-face_matching.json")
-        scene_detect_file = generate_file_path(scratch_dir, "output", "scene_detection", f"{episode_id}.txt")
+        tracked_file = generate_file_path(nese_dir, "output", "face_tracking", episode_id, f"{episode_id}_selected_frames_per_face.json")
+        cluster_file = generate_file_path(nese_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
+        matched_file = generate_file_path(nese_dir, "output", "cluster_face_matching", f"{episode_id}_cluster-face_matching.json")
+        scene_detect_file = generate_file_path(nese_dir, "output", "scene_detection", f"{episode_id}.txt")
 
         tracked_face = read_json_file(tracked_file)
         clustered_face = read_json_file(cluster_file)
         matched_face = read_json_file(matched_file)
         scene_detect = pd.read_csv(scene_detect_file, sep=",")
+        scene_mapping = {i: f'scene_{i+1}' for i in range(len(scene_detect))}
+        scene_detect.index = [scene_mapping[i] for i in scene_detect.index]
 
         scene_idx = natsorted(clustered_face.keys())
         df = pd.DataFrame(index=pd.Index(scene_idx), columns=[str(i) for i in range(6)])
@@ -46,11 +48,17 @@ def process_episode(episode_id, scratch_dir, save_dir):
         }
         df.rename(columns=column_mapping, inplace=True)
 
-        scene_detect.index = df.index
+        # Reindex scene_detect with all possible scenes
+        all_scenes = [f'scene_{i+1}' for i in range(len(scene_detect))]
+        scene_detect = scene_detect.reindex(all_scenes)
+
+        df = df.reindex(all_scenes, fill_value=0)
         merged_df = pd.concat([scene_detect, df], axis=1)
-        # fillna with 0
+
+        # Fill NaN values with 0
         merged_df = merged_df.fillna(0)
-        #change to float
+
+        # Change to float
         merged_df = merged_df.astype(float)
         
         output_file = generate_file_path(save_dir, f"{episode_id}_event.csv")
@@ -66,11 +74,12 @@ def main():
     # Load environment variables
     base_dir = os.getenv("BASE_DIR")
     scratch_dir = os.getenv("SCRATCH_DIR")
+    nese_dir = os.getenv("NESE_DIR")
 
     if not base_dir or not scratch_dir:
         raise EnvironmentError("BASE_DIR or SCRATCH_DIR environment variables are not set.")
 
-    save_dir = generate_file_path(scratch_dir, "output", "face_event")
+    save_dir = generate_file_path(nese_dir, "output", "face_event")
     os.makedirs(save_dir, exist_ok=True)
 
     # Read episode IDs from the file
@@ -87,7 +96,7 @@ def main():
 
     # Process each episode
     for episode_id in episode_ids:
-        process_episode(episode_id, scratch_dir, save_dir)
-
+        process_episode(episode_id, nese_dir, save_dir)
+    # process_episode(episode_ids[1], nese_dir, save_dir)
 if __name__ == "__main__":
     main()

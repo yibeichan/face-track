@@ -10,6 +10,13 @@ sys.path.append("/om2/user/yibei/face-track/src")
 from face_clusterer import FaceEmbedder, FaceClusterer
 
 def match_clusters_with_unique_faces(clustered_faces, unique_faces_per_scene):
+    # Build a mapping from unique_face_id to cluster_id
+    unique_face_to_cluster = {}
+    for cluster_id, faces_in_cluster in clustered_faces.items():
+        for face_data in faces_in_cluster:
+            unique_face_id = face_data['unique_face_id']
+            unique_face_to_cluster[unique_face_id] = cluster_id  # Overwrites if duplicate, which is acceptable here
+
     matched_results = {}
 
     for scene_id, unique_faces in unique_faces_per_scene.items():
@@ -19,25 +26,29 @@ def match_clusters_with_unique_faces(clustered_faces, unique_faces_per_scene):
             unique_face_id = unique_face['unique_face_id']
             matched_data = {
                 "unique_face_id": unique_face_id,
-                "global_face_id": unique_face.get('global_face_id', None),  # Global face ID from unique_face
+                "global_face_id": unique_face.get('global_face_id', None),
                 "cluster_id": None,
-                "embeddings": [],  # List to store embeddings
-                "image_paths": []  # List to store image paths
+                "embeddings": [],
+                "image_paths": []
             }
 
-            # Find the corresponding cluster
-            for cluster_id, faces_in_cluster in clustered_faces.items():
-                for face_data in faces_in_cluster:
-                    # Match based on unique_face_id directly
+            cluster_id = unique_face_to_cluster.get(unique_face_id)
+            if cluster_id is not None:
+                matched_data["cluster_id"] = cluster_id
+                # Collect embeddings and image paths from the cluster for this unique_face_id
+                embeddings = []
+                image_paths = []
+                for face_data in clustered_faces[cluster_id]:
                     if face_data['unique_face_id'] == unique_face_id:
-                        # Add embedding and image path to the matched data
-                        matched_data["embeddings"].append(face_data['embedding'].tolist())
-                        matched_data["image_paths"].append(face_data['image_path'])
-                        matched_data["cluster_id"] = cluster_id
+                        embeddings.append(face_data['embedding'].tolist())
+                        image_paths.append(face_data['image_path'])
+                matched_data["embeddings"] = embeddings
+                matched_data["image_paths"] = image_paths
+            else:
+                # Handle unmatched unique_face_id if necessary
+                print(f"Warning: unique_face_id {unique_face_id} not found in any cluster.")
 
-                if matched_data["cluster_id"] is not None:
-                    matched_results[scene_id].append(matched_data)
-                    break
+            matched_results[scene_id].append(matched_data)
 
     return matched_results
 
@@ -70,7 +81,7 @@ def save_json(data, output_file):
 
 def main(video_name, face_selection_file, output_dir):
     face_embedder = FaceEmbedder()
-    face_clusterer = FaceClusterer(similarity_threshold=0.65, max_iterations=100)
+    face_clusterer = FaceClusterer(similarity_threshold=0.6, max_iterations=100)
 
     selected_faces = read_json(face_selection_file)
     image_dir = os.path.dirname(face_selection_file)
@@ -95,12 +106,10 @@ if __name__ == "__main__":
 
     load_dotenv()
     scratch_dir = os.getenv("SCRATCH_DIR")
-    if scratch_dir is None: 
-        print("Error: SCRATCH_DIR environment variable is not set.")
-        sys.exit(1)
+    nese_dir = os.getenv("NESE_DIR")
 
-    face_selection_file = os.path.join(scratch_dir, "output", "face_tracking", f"{video_name}", f"{video_name}_selected_frames_per_face.json")
-    output_dir = os.path.join(scratch_dir, "output", "face_clustering")
+    face_selection_file = os.path.join(nese_dir, "output", "face_tracking", f"{video_name}", f"{video_name}_selected_frames_per_face.json")
+    output_dir = os.path.join(nese_dir, "output", "face_clustering")
     os.makedirs(output_dir, exist_ok=True)
 
     main(video_name, face_selection_file, output_dir)

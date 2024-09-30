@@ -5,8 +5,8 @@
 #SBATCH --error=/om2/user/yibei/face-track/logs/%x_%j.err 
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
-#SBATCH --time=00:10:00 
-#SBATCH --array=1-292
+#SBATCH --time=00:20:00 
+#SBATCH --array=2-292
 #SBATCH --ntasks=1 
 #SBATCH --gres=gpu:1
 #SBATCH --mem=1G

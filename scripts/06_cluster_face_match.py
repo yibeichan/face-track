@@ -150,7 +150,7 @@ if __name__ == "__main__":
 
     cluster_file = os.path.join(nese_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
     ref_emb_dir = os.path.join(nese_dir, "output", "char_ref_embs")
-    output_dir = os.path.join(scratch_dir, "output", "cluster_face_matching")
+    output_dir = os.path.join(nese_dir, "output", "cluster_face_matching")
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
