@@ -164,12 +164,10 @@ if __name__ == "__main__":
     season_id = args.season_id
 
 
-    required_env_vars = ["BASE_DIR", "SCRATCH_DIR"]
+    required_env_vars = ["SCRATCH_DIR"]
 
-    base_dir = os.getenv("BASE_DIR")
     scratch_dir = os.getenv("SCRATCH_DIR")
-    nese_dir = os.getenv("NESE_DIR")
-    output_dir = os.path.join(nese_dir, "output")
+    output_dir = os.path.join(scratch_dir, "output")
     input_dir = os.path.join(output_dir, "char_face")
     save_dir = os.path.join(output_dir, "char_ref_embs")
 

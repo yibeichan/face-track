@@ -8,14 +8,29 @@ from tqdm import tqdm
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class FaceTracker:
-    def __init__(self, iou_threshold=0.5):
-        self.iou_threshold = iou_threshold
+    def __init__(self, iou_threshold=0.5, max_gap=2, box_expansion=0.1, use_median_box=True):
+        """
+        Simple, effective face tracker for within-scene tracking.
 
-    def expand_box(self, box, expansion_ratio=0.1):
-        """Expand the bounding box by a given ratio."""
+        Args:
+            iou_threshold (float): Minimum IoU required to associate a detection with an existing track.
+            max_gap (int): Maximum number of missing frames before a track is considered dead.
+            box_expansion (float): Ratio to expand bounding boxes before IoU calculation (tolerates small movements).
+            use_median_box (bool): Use median of recent detections for matching (more stable than last detection).
+        """
+        self.iou_threshold = iou_threshold
+        self.max_gap = max(0, int(max_gap))
+        self.box_expansion = box_expansion
+        self.use_median_box = use_median_box
+
+    def expand_box(self, box, expansion_ratio=None):
+        """Expand the bounding box by a given ratio to tolerate small head movements."""
+        if expansion_ratio is None:
+            expansion_ratio = self.box_expansion
+
         width = box[2] - box[0]
         height = box[3] - box[1]
-        
+
         x_expand = width * expansion_ratio
         y_expand = height * expansion_ratio
 
@@ -47,27 +62,81 @@ class FaceTracker:
         iou = inter_area / (box1_area + box2_area - inter_area + 1e-6)
         return iou.item()
 
+    def _get_reference_box(self, track):
+        """
+        Get the reference box for matching against new detections.
+
+        Uses median of recent detections (more stable) or most recent detection (simpler).
+        The median approach is robust to jittery detections while staying responsive.
+        """
+        if self.use_median_box and len(track["observations"]) >= 3:
+            # Use median of last 5 detections for stability
+            recent_boxes = [obs["face"] for obs in track["observations"][-5:]]
+            recent_boxes = np.array(recent_boxes)
+            median_box = np.median(recent_boxes, axis=0)
+            return median_box
+        else:
+            # Use most recent detection
+            return np.array(track["observations"][-1]["face"])
+
     def track_faces(self, face_data, min_faces_per_cluster):
-        """Track faces within a scene based on IoU threshold."""
-        clusters = []
+        """
+        Track faces within a scene using IoU matching with best-match assignment.
+
+        Simple and effective: finds the track with highest IoU above threshold.
+        Uses expanded boxes to tolerate natural head movement and detection jitter.
+        """
+        tracks = []
 
         for frame_number, face, conf in face_data:
-            face_added = False
+            detection_box = np.array(face, dtype=np.float32)
+            best_track = None
+            best_iou = 0.0
 
-            for cluster in clusters:
+            # Find the best matching track
+            for track in tracks:
+                frame_gap = frame_number - track["last_frame"]
 
-                last_face_in_cluster = cluster[-1]["face"]
-                iou = self.calculate_iou(self.expand_box(last_face_in_cluster), self.expand_box(face))
+                # Skip tracks that haven't been updated recently (likely different person)
+                if frame_gap > self.max_gap + 1:
+                    continue
 
-                if iou > self.iou_threshold:
-                    cluster.append({"frame": frame_number, "face": face, "conf": conf})
-                    face_added = True
-                    break
+                # Get reference box (median or most recent)
+                reference_box = self._get_reference_box(track)
 
-            if not face_added:
-                clusters.append([{"frame": frame_number, "face": face, "conf": conf}])
+                # Calculate IoU with expanded boxes to tolerate small movements
+                iou = self.calculate_iou(
+                    self.expand_box(reference_box.tolist()),
+                    self.expand_box(detection_box.tolist())
+                )
 
-        return [cluster for cluster in clusters if len(cluster) > min_faces_per_cluster]
+                # Keep track of best match
+                if iou > self.iou_threshold and iou > best_iou:
+                    best_track = track
+                    best_iou = iou
+
+            # Add detection to best matching track or create new track
+            if best_track is not None:
+                best_track["observations"].append({
+                    "frame": frame_number,
+                    "face": detection_box.tolist(),
+                    "conf": conf
+                })
+                best_track["last_frame"] = frame_number
+            else:
+                # Create new track
+                tracks.append({
+                    "observations": [{
+                        "frame": frame_number,
+                        "face": detection_box.tolist(),
+                        "conf": conf
+                    }],
+                    "last_frame": frame_number
+                })
+
+        # Filter out short tracks (likely false detections)
+        return [track["observations"] for track in tracks
+                if len(track["observations"]) > min_faces_per_cluster]
 
     def track_faces_across_scenes(self, scene_data, face_data):
         """Track faces across all scenes in a video."""
