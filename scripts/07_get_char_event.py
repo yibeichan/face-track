@@ -95,6 +95,5 @@ def main():
     # Process each episode
     for episode_id in episode_ids:
         process_episode(episode_id, scratch_dir, save_dir)
-    # process_episode(episode_ids[1], nese_dir, save_dir)
 if __name__ == "__main__":
     main()

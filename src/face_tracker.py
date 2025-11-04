@@ -70,7 +70,7 @@ class FaceTracker:
         The median approach is robust to jittery detections while staying responsive.
         """
         if self.use_median_box and len(track["observations"]) >= 3:
-            # Use median of last 5 detections for stability
+            # Use median of up to the last 5 detections (minimum 3) for stability
             recent_boxes = [obs["face"] for obs in track["observations"][-5:]]
             recent_boxes = np.array(recent_boxes)
             median_box = np.median(recent_boxes, axis=0)

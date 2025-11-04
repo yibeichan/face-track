@@ -163,8 +163,13 @@ if __name__ == "__main__":
 
     season_id = args.season_id
 
-
     required_env_vars = ["SCRATCH_DIR"]
+
+    # Check that all required environment variables are set
+    missing_vars = [var for var in required_env_vars if os.getenv(var) is None]
+    if missing_vars:
+        print(f"Error: Missing required environment variable(s): {', '.join(missing_vars)}")
+        sys.exit(1)
 
     scratch_dir = os.getenv("SCRATCH_DIR")
     output_dir = os.path.join(scratch_dir, "output")

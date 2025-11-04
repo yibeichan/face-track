@@ -1,8 +1,6 @@
 import sys
 from pathlib import Path
 
-import numpy as np
-
 # Ensure the source module is importable when running pytest from repo root.
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
