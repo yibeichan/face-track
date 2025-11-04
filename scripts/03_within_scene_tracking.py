@@ -18,18 +18,18 @@ def save2json(data, output_file):
         print(f"Error writing to file {output_file}: {e}")
         sys.exit(1)
 
-def main(video_name, nese_dir, output_dir):
+def main(video_name, scratch_dir, output_dir, tracker_kwargs):
 
-    scene_file = os.path.join(nese_dir, "output", "scene_detection", f"{video_name}.txt")
-    face_detection_file = os.path.join(nese_dir, "output", "face_detection", f"{video_name}.json")
-    video_file = os.path.join(nese_dir, "data", "mkv2mp4", f"{video_name}.mp4")
+    scene_file = os.path.join(scratch_dir, "output", "scene_detection", f"{video_name}.txt")
+    face_detection_file = os.path.join(scratch_dir, "output", "face_detection", f"{video_name}.json")
+    video_file = os.path.join(scratch_dir, "data", "mkv2mp4", f"{video_name}.mp4")
     
     scene_data = pd.read_csv(scene_file, sep=",")
     with open(face_detection_file, "r") as f:
         face_data = json.load(f)
 
     # Initialize the tracker and selector
-    face_tracker = FaceTracker(iou_threshold=0.5)
+    face_tracker = FaceTracker(**tracker_kwargs)
     frame_selector = FrameSelector(video_file=video_file, top_n=3, output_dir=output_dir)
 
     # Track faces across scenes
@@ -43,17 +43,32 @@ def main(video_name, nese_dir, output_dir):
     save2json(selected_frames, output_file)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Face Detection in Video')
-    parser.add_argument('video_name', type=str, help='Name of the input video file without extension.')  # Clarified the argument description
-    
+    parser = argparse.ArgumentParser(description='Within-scene face tracking using IoU matching')
+    parser.add_argument('video_name', type=str, help='Name of the input video file without extension.')
+    parser.add_argument('--iou-threshold', type=float, default=0.5,
+                       help='Minimum IoU required to link detections (0-1).')
+    parser.add_argument('--max-gap', type=int, default=2,
+                       help='Maximum number of missing frames before track is considered dead.')
+    parser.add_argument('--box-expansion', type=float, default=0.1,
+                       help='Ratio to expand boxes before IoU calculation (tolerates head movement).')
+    parser.add_argument('--use-median-box', action='store_true', default=True,
+                       help='Use median of recent detections for more stable tracking.')
+    parser.add_argument('--no-median-box', dest='use_median_box', action='store_false',
+                       help='Use only most recent detection (simpler, faster).')
+
     args = parser.parse_args()
     video_name = args.video_name
 
     load_dotenv()
     scratch_dir = os.getenv("SCRATCH_DIR")
-    base_dir = os.getenv("BASE_DIR")
-    nese_dir = os.getenv("NESE_DIR")
-    output_dir = os.path.join(nese_dir, "output", "face_tracking", f"{video_name}")
-    os.makedirs(output_dir, exist_ok=True) 
+    output_dir = os.path.join(scratch_dir, "output", "face_tracking", f"{video_name}")
+    os.makedirs(output_dir, exist_ok=True)
 
-    main(video_name, nese_dir, output_dir)
+    tracker_kwargs = {
+        "iou_threshold": args.iou_threshold,
+        "max_gap": args.max_gap,
+        "box_expansion": args.box_expansion,
+        "use_median_box": args.use_median_box
+    }
+
+    main(video_name, scratch_dir, output_dir, tracker_kwargs)

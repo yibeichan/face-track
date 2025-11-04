@@ -106,10 +106,9 @@ if __name__ == "__main__":
 
     load_dotenv()
     scratch_dir = os.getenv("SCRATCH_DIR")
-    nese_dir = os.getenv("NESE_DIR")
 
-    face_selection_file = os.path.join(nese_dir, "output", "face_tracking", f"{video_name}", f"{video_name}_selected_frames_per_face.json")
-    output_dir = os.path.join(nese_dir, "output", "face_clustering")
+    face_selection_file = os.path.join(scratch_dir, "output", "face_tracking", f"{video_name}", f"{video_name}_selected_frames_per_face.json")
+    output_dir = os.path.join(scratch_dir, "output", "face_clustering")
     os.makedirs(output_dir, exist_ok=True)
 
     main(video_name, face_selection_file, output_dir)

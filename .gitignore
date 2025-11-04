@@ -1,12 +1,15 @@
+AGENTS.md
+CLAUDE.md
+
 # Byte-compiled / optimized / DLL files
-*__pycache__/
+*/__pycache__/
 *.py[cod]
 *$py.class
+notebooks/
 data/
 output/
 logs/
 .env
-*test*
 # C extensions
 *.so
 

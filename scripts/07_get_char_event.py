@@ -16,12 +16,12 @@ def read_json_file(file_path):
 def generate_file_path(base_dir, *paths):
     return os.path.join(base_dir, *paths)
 
-def process_episode(episode_id, nese_dir, save_dir):
+def process_episode(episode_id, scratch_dir, save_dir):
     try:
-        tracked_file = generate_file_path(nese_dir, "output", "face_tracking", episode_id, f"{episode_id}_selected_frames_per_face.json")
-        cluster_file = generate_file_path(nese_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
-        matched_file = generate_file_path(nese_dir, "output", "cluster_face_matching", f"{episode_id}_cluster-face_matching.json")
-        scene_detect_file = generate_file_path(nese_dir, "output", "scene_detection", f"{episode_id}.txt")
+        tracked_file = generate_file_path(scratch_dir, "output", "face_tracking", episode_id, f"{episode_id}_selected_frames_per_face.json")
+        cluster_file = generate_file_path(scratch_dir, "output", "face_clustering", f"{episode_id}_matched_faces_with_clusters.json")
+        matched_file = generate_file_path(scratch_dir, "output", "cluster_face_matching", f"{episode_id}_cluster-face_matching.json")
+        scene_detect_file = generate_file_path(scratch_dir, "output", "scene_detection", f"{episode_id}.txt")
 
         tracked_face = read_json_file(tracked_file)
         clustered_face = read_json_file(cluster_file)
@@ -72,18 +72,16 @@ def main():
     load_dotenv()
 
     # Load environment variables
-    base_dir = os.getenv("BASE_DIR")
     scratch_dir = os.getenv("SCRATCH_DIR")
-    nese_dir = os.getenv("NESE_DIR")
 
-    if not base_dir or not scratch_dir:
-        raise EnvironmentError("BASE_DIR or SCRATCH_DIR environment variables are not set.")
+    if not scratch_dir:
+        raise EnvironmentError("SCRATCH_DIR environment variable is not set.")
 
-    save_dir = generate_file_path(nese_dir, "output", "face_event")
+    save_dir = generate_file_path(scratch_dir, "output", "face_event")
     os.makedirs(save_dir, exist_ok=True)
 
     # Read episode IDs from the file
-    episode_file = generate_file_path(base_dir, "data", "episode_id.txt")
+    episode_file = generate_file_path(scratch_dir, "data", "episode_id.txt")
     try:
         with open(episode_file, "r") as f:
             episode_ids = [line.strip() for line in f if line.strip()]
@@ -96,7 +94,6 @@ def main():
 
     # Process each episode
     for episode_id in episode_ids:
-        process_episode(episode_id, nese_dir, save_dir)
-    # process_episode(episode_ids[1], nese_dir, save_dir)
+        process_episode(episode_id, scratch_dir, save_dir)
 if __name__ == "__main__":
     main()
