@@ -59,7 +59,7 @@ def reorganize_by_cluster(video_name, matched_faces_file, source_dir, output_bas
             for img_path in image_paths:
                 # Extract frame number from filename (format: "scene_X_face_Y_frame_ZZZ.jpg")
                 filename = os.path.basename(img_path)
-                frame_parts = filename.replace('.jpg', '').split('_')
+                frame_parts = os.path.splitext(filename)[0].split('_')
                 if 'frame' in frame_parts:
                     frame_idx = frame_parts[frame_parts.index('frame') + 1]
                 else:
@@ -102,8 +102,10 @@ def reorganize_by_cluster(video_name, matched_faces_file, source_dir, output_bas
                 elif mode == 'move':
                     shutil.move(source_path, dest_path)
                 elif mode == 'symlink':
-                    # Create relative symlink
+                    # Create relative symlink, overwriting if it exists
                     rel_source = os.path.relpath(source_path, cluster_dir)
+                    if os.path.lexists(dest_path):
+                        os.remove(dest_path)
                     os.symlink(rel_source, dest_path)
                 else:
                     raise ValueError(f"Unknown mode: {mode}")
