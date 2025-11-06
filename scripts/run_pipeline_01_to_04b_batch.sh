@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name=pipeline_01_04b
-#SBATCH --output=/om2/user/yibei/face-track/logs/%x_%j.out
-#SBATCH --error=/om2/user/yibei/face-track/logs/%x_%j.err
+#SBATCH --output=../logs/%x_%j.out
+#SBATCH --error=../logs/%x_%j.err
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
 #SBATCH --time=08:00:00
@@ -11,7 +11,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
 #SBATCH --mail-type=FAIL,END
-#SBATCH --mail-user=yibei@mit.edu
+#SBATCH --mail-user=your-email@example.com
 
 # Full pipeline script (01-04b) for batch processing with SLURM
 # This script runs all 5 steps sequentially for each video in the array
@@ -22,9 +22,14 @@ source $HOME/miniconda3/etc/profile.d/conda.sh
 # Activate conda environment
 conda activate face-track
 
-# Configuration
-TASK_FILE="/om2/user/yibei/face-track/data/episode_id.txt"
-SCRIPTS_DIR="/om2/user/yibei/face-track/scripts"
+# Derive paths from script location
+SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
+TASK_FILE="$REPO_ROOT/data/episode_id.txt"
+LOG_DIR="$REPO_ROOT/logs"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
 
 # Mode for step 04b: copy, move, or symlink (default: symlink for efficiency)
 MODE="${MODE:-symlink}"

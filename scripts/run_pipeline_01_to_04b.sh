@@ -98,7 +98,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Load environment variables safely
-REPO_ROOT="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env"
 
 if [ -f "$ENV_FILE" ]; then

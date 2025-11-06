@@ -59,12 +59,13 @@ MODE=copy sbatch run_pipeline_01_to_04b_batch.sh
 - **Array**: Processes videos listed in `data/episode_id.txt`
 
 **Configuration:**
-Before running, update these paths in `run_pipeline_01_to_04b_batch.sh`:
-- `--output`: Path to log output directory
-- `--error`: Path to log error directory
-- `--mail-user`: Your email address
-- `TASK_FILE`: Path to file containing video names (one per line)
-- `SCRIPTS_DIR`: Path to scripts directory
+Before running, update in `run_pipeline_01_to_04b_batch.sh`:
+- `--mail-user`: Your email address (line 14)
+- `--array`: Number of videos to process (line 9, e.g., `1-292`)
+- `--partition`: SLURM partition name if different from `normal` (line 6)
+- Ensure `data/episode_id.txt` exists with one video name per line
+
+**Note:** Log files are automatically created in `logs/` directory at the repository root.
 
 #### Individual Steps (Advanced)
 
@@ -180,9 +181,9 @@ squeue -u $USER
 # View specific job details
 squeue -j <job_id>
 
-# Check logs in real-time (replace with actual path)
-tail -f /om2/user/yibei/face-track/logs/pipeline_01_04b_<job_id>.out
-tail -f /om2/user/yibei/face-track/logs/pipeline_01_04b_<job_id>.err
+# Check logs in real-time
+tail -f logs/pipeline_01_04b_<job_id>.out
+tail -f logs/pipeline_01_04b_<job_id>.err
 
 # Cancel a job
 scancel <job_id>
