@@ -6,12 +6,20 @@
 set -e  # Exit on error
 set -u  # Exit on undefined variable
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Color codes for output (only when output is to a terminal)
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
 
 # Function to print colored messages
 log_info() {
@@ -70,6 +78,10 @@ shift
 while [ $# -gt 0 ]; do
     case $1 in
         --mode)
+            if [ $# -lt 2 ]; then
+                log_error "Missing argument for --mode. Must be one of 'copy', 'move', or 'symlink'."
+                exit 1
+            fi
             if [[ "$2" =~ ^(copy|move|symlink)$ ]]; then
                 MODE="$2"
                 shift 2
@@ -86,18 +98,15 @@ while [ $# -gt 0 ]; do
 done
 
 # Load environment variables safely
-REPO_ROOT="$(dirname "$(dirname "$0")")"
+REPO_ROOT="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
 ENV_FILE="$REPO_ROOT/.env"
 
 if [ -f "$ENV_FILE" ]; then
     log_info "Loading environment from: $ENV_FILE"
-    while IFS= read -r line; do
-        # Skip comments and empty lines
-        if [[ "$line" =~ ^\s*# ]] || [[ -z "$line" ]]; then
-            continue
-        fi
-        export "$line"
-    done < "$ENV_FILE"
+    set -a  # Automatically export all variables
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    set +a  # Stop automatically exporting
 else
     log_warning ".env file not found at: $ENV_FILE"
 fi
