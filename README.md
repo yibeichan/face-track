@@ -38,10 +38,39 @@ cd scripts
 
 ### Batch Processing with SLURM
 
-For processing multiple videos in parallel using SLURM array jobs:
+#### Full Pipeline (Recommended)
+
+Process multiple videos through the entire pipeline (01-04b) using SLURM array jobs:
 
 ```bash
-# Individual steps
+cd scripts
+
+# Run with default settings (symlink mode)
+sbatch run_pipeline_01_to_04b_batch.sh
+
+# Or specify a different mode using environment variable
+MODE=copy sbatch run_pipeline_01_to_04b_batch.sh
+```
+
+**Resource Allocation:**
+- **Time**: 8 hours per video
+- **Memory**: 16 GB (required for face detection step)
+- **GPU**: 1 GPU per job
+- **Array**: Processes videos listed in `data/episode_id.txt`
+
+**Configuration:**
+Before running, update these paths in `run_pipeline_01_to_04b_batch.sh`:
+- `--output`: Path to log output directory
+- `--error`: Path to log error directory
+- `--mail-user`: Your email address
+- `TASK_FILE`: Path to file containing video names (one per line)
+- `SCRIPTS_DIR`: Path to scripts directory
+
+#### Individual Steps (Advanced)
+
+For running steps separately with more control:
+
+```bash
 sbatch 01_scene_detection.sh
 sbatch 02_face_detection.sh
 sbatch 03_within_scene_tracking.sh
@@ -140,7 +169,61 @@ Each video generates:
 - `{video_name}_matched_faces_with_clusters.json` - Clustering results
 - `{video_name}/` - Directory with cluster subdirectories
 
+## Monitoring SLURM Jobs
+
+After submitting a batch job with `sbatch`, you can monitor progress using:
+
+```bash
+# Check job status
+squeue -u $USER
+
+# View specific job details
+squeue -j <job_id>
+
+# Check logs in real-time (replace with actual path)
+tail -f /om2/user/yibei/face-track/logs/pipeline_01_04b_<job_id>.out
+tail -f /om2/user/yibei/face-track/logs/pipeline_01_04b_<job_id>.err
+
+# Cancel a job
+scancel <job_id>
+
+# Cancel all your jobs
+scancel -u $USER
+
+# View completed job info
+sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
+```
+
+**Log Files:**
+- Output logs: `logs/pipeline_01_04b_<job_id>.out`
+- Error logs: `logs/pipeline_01_04b_<job_id>.err`
+- One log pair per array task
+
 ## Troubleshooting
+
+### SLURM Issues
+
+**Job pending (PD) for long time:**
+- Check cluster load with `squeue`
+- Verify resource requests are reasonable
+- Check node exclusions in script
+
+**Job fails immediately:**
+- Check log files in `logs/` directory
+- Verify conda environment exists: `conda env list`
+- Ensure TASK_FILE exists and has correct format
+- Verify SCRATCH_DIR is set in `.env`
+
+**Out of memory errors:**
+- Step 02 (face detection) needs 16GB
+- Increase `--mem` if processing high-resolution videos
+- Check `sacct` output for MaxRSS to see actual memory usage
+
+**GPU not available:**
+- Verify partition allows GPU access
+- Check GPU availability: `sinfo -p <partition>`
+
+### Pipeline Issues
 
 **Pipeline fails at step 03:**
 - Check if scenes were detected in step 01

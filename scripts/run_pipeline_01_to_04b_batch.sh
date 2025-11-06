@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#SBATCH --job-name=pipeline_01_04b
+#SBATCH --output=/om2/user/yibei/face-track/logs/%x_%j.out
+#SBATCH --error=/om2/user/yibei/face-track/logs/%x_%j.err
+#SBATCH --partition=normal
+#SBATCH --exclude=node[030-070]
+#SBATCH --time=08:00:00
+#SBATCH --array=1-292
+#SBATCH --ntasks=1
+#SBATCH --gres=gpu:1
+#SBATCH --mem=16G
+#SBATCH --mail-type=FAIL,END
+#SBATCH --mail-user=yibei@mit.edu
+
+# Full pipeline script (01-04b) for batch processing with SLURM
+# This script runs all 5 steps sequentially for each video in the array
+
+# Source conda
+source $HOME/miniconda3/etc/profile.d/conda.sh
+
+# Activate conda environment
+conda activate face-track
+
+# Configuration
+TASK_FILE="/om2/user/yibei/face-track/data/episode_id.txt"
+SCRIPTS_DIR="/om2/user/yibei/face-track/scripts"
+
+# Mode for step 04b: copy, move, or symlink (default: symlink for efficiency)
+MODE="${MODE:-symlink}"
+
+# Get the video name for this array task
+TASK_ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$TASK_FILE")
+
+if [ -z "$TASK_ID" ]; then
+    echo "ERROR: Could not read TASK_ID from line ${SLURM_ARRAY_TASK_ID} of $TASK_FILE"
+    exit 1
+fi
+
+echo "=========================================="
+echo "SLURM Array Job ID: ${SLURM_ARRAY_JOB_ID}"
+echo "SLURM Array Task ID: ${SLURM_ARRAY_TASK_ID}"
+echo "Processing video: $TASK_ID"
+echo "Mode for 04b: $MODE"
+echo "Node: $(hostname)"
+echo "=========================================="
+echo ""
+
+# Change to scripts directory
+cd "$SCRIPTS_DIR" || exit 1
+
+# Run the full pipeline script
+echo "Starting pipeline execution..."
+./run_pipeline_01_to_04b.sh "$TASK_ID" --mode "$MODE"
+
+# Capture exit code
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "=========================================="
+    echo "SUCCESS: Pipeline completed for $TASK_ID"
+    echo "=========================================="
+else
+    echo ""
+    echo "=========================================="
+    echo "FAILED: Pipeline failed for $TASK_ID with exit code $EXIT_CODE"
+    echo "=========================================="
+    exit $EXIT_CODE
+fi
