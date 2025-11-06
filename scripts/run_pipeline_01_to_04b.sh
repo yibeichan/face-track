@@ -70,8 +70,13 @@ shift
 while [ $# -gt 0 ]; do
     case $1 in
         --mode)
-            MODE=$2
-            shift 2
+            if [[ "$2" =~ ^(copy|move|symlink)$ ]]; then
+                MODE="$2"
+                shift 2
+            else
+                log_error "Invalid mode: '$2'. Must be one of 'copy', 'move', or 'symlink'."
+                exit 1
+            fi
             ;;
         *)
             log_error "Unknown argument: $1"
@@ -80,11 +85,21 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Load environment variables
-if [ -f "/om2/user/yibei/face-track/.env" ]; then
-    export $(grep -v '^#' /om2/user/yibei/face-track/.env | xargs)
-elif [ -f "$(dirname $(dirname $0))/.env" ]; then
-    export $(grep -v '^#' $(dirname $(dirname $0))/.env | xargs)
+# Load environment variables safely
+REPO_ROOT="$(dirname "$(dirname "$0")")"
+ENV_FILE="$REPO_ROOT/.env"
+
+if [ -f "$ENV_FILE" ]; then
+    log_info "Loading environment from: $ENV_FILE"
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^\s*# ]] || [[ -z "$line" ]]; then
+            continue
+        fi
+        export "$line"
+    done < "$ENV_FILE"
+else
+    log_warning ".env file not found at: $ENV_FILE"
 fi
 
 # Get SCRATCH_DIR from environment
@@ -120,6 +135,9 @@ log_info "Starting pipeline for: $VIDEO_NAME"
 log_info "=========================================="
 echo ""
 
+# Change to scripts directory for all pipeline steps
+cd "$SCRIPTS_DIR"
+
 # ============================================================================
 # Step 01: Scene Detection
 # ============================================================================
@@ -127,7 +145,6 @@ log_info "=========================================="
 log_info "STEP 01: Scene Detection"
 log_info "=========================================="
 
-cd "$SCRIPTS_DIR"
 python 01_scene_detection.py "$VIDEO_NAME"
 
 # Validate output
@@ -141,7 +158,6 @@ log_info "=========================================="
 log_info "STEP 02: Face Detection"
 log_info "=========================================="
 
-cd "$SCRIPTS_DIR"
 python 02_face_detection.py "$VIDEO_NAME"
 
 # Validate output
@@ -155,7 +171,6 @@ log_info "=========================================="
 log_info "STEP 03: Within-Scene Tracking"
 log_info "=========================================="
 
-cd "$SCRIPTS_DIR"
 python 03_within_scene_tracking.py "$VIDEO_NAME"
 
 # Validate outputs
@@ -180,7 +195,6 @@ log_info "=========================================="
 log_info "STEP 04: Face Clustering"
 log_info "=========================================="
 
-cd "$SCRIPTS_DIR"
 python 04_face_clustering.py "$VIDEO_NAME"
 
 # Validate output
@@ -194,7 +208,6 @@ log_info "=========================================="
 log_info "STEP 04b: Reorganize by Cluster"
 log_info "=========================================="
 
-cd "$SCRIPTS_DIR"
 python 04b_reorganize_by_cluster.py "$VIDEO_NAME" --mode "$MODE"
 
 # Validate output
