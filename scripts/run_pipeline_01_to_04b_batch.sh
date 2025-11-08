@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name=pipeline_01_04b
-#SBATCH --output=../logs/%x_%j.out
-#SBATCH --error=../logs/%x_%j.err
+#SBATCH --output=logs/%x_%j.out
+#SBATCH --error=logs/%x_%j.err
 #SBATCH --partition=normal
 #SBATCH --exclude=node[030-070]
 #SBATCH --time=08:00:00
@@ -29,7 +29,7 @@ micromamba activate face-track
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 TASK_FILE="$REPO_ROOT/data/episode_id.txt"
-LOG_DIR="$REPO_ROOT/logs"
+LOG_DIR="$SCRIPTS_DIR/logs"
 
 # Ensure log directory exists
 mkdir -p "$LOG_DIR"

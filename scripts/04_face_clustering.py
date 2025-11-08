@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import json
 
-sys.path.append("/om2/user/yibei/face-track/src")
+# Add src directory to path dynamically
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 from face_clusterer import FaceEmbedder, FaceClusterer
 
 def match_clusters_with_unique_faces(clustered_faces, unique_faces_per_scene):

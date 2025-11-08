@@ -3,8 +3,8 @@ import sys
 import argparse
 from dotenv import load_dotenv
 
-# Ensure the custom module is in the Python path
-sys.path.append("/om2/user/yibei/face-track/src")
+# Add src directory to path dynamically
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 from face_detector import FaceDetector
 
 def main(video_name, input_dir, output_dir):

@@ -3,9 +3,8 @@ import sys
 import argparse
 from dotenv import load_dotenv
 
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-# print("sys.path:", sys.path) 
-sys.path.append("/om2/user/yibei/face-track/src")
+# Add src directory to path dynamically
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 from scene_detector import SceneDetector
 
 def main(video_name, detector_type, input_dir, output_dir):
