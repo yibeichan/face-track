@@ -11,16 +11,19 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
 #SBATCH --mail-type=FAIL,END
-#SBATCH --mail-user=your-email@example.com
+#SBATCH --mail-user=your-email@example.com  # UPDATE THIS with your email
 
 # Full pipeline script (01-04b) for batch processing with SLURM
 # This script runs all 5 steps sequentially for each video in the array
 
-# Source conda
-source $HOME/miniconda3/etc/profile.d/conda.sh
+# Source micromamba (adjust if using conda instead)
+# For micromamba:
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate face-track
 
-# Activate conda environment
-conda activate face-track
+# For conda, use instead:
+# source $HOME/miniconda3/etc/profile.d/conda.sh
+# conda activate face-track
 
 # Derive paths from script location
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
