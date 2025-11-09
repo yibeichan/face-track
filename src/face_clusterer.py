@@ -67,7 +67,7 @@ class FaceClusterer:
         self.max_iterations = max_iterations
 
     def build_graph(self, face_embeddings):
-        """Builds a graph where nodes represent embeddings, and edges represent similarities."""
+        """Builds a graph where nodes represent embeddings, and edges represent similarities (vectorized)."""
         G = nx.Graph()
 
         # Flatten embeddings with identifiers into node_data
@@ -76,20 +76,29 @@ class FaceClusterer:
             for i, face_data in enumerate(face_embeddings)
             for emb_info in face_data['embeddings']
         ]
-        
+
         # Add nodes to the graph
         for i, (face_idx, embedding, face_data, frame_idx, image_path) in enumerate(node_data):
             G.add_node(i, face_idx=face_idx, embedding=embedding, face_data=face_data, frame_idx=frame_idx, image_path=image_path)
-        
-        # Add edges based on maximum similarity between embeddings
-        with tqdm(total=len(node_data)*(len(node_data)-1)//2, desc="Building Graph", unit="edge") as pbar:
-            for i in range(len(node_data)):
-                for j in range(i + 1, len(node_data)):
-                    similarity = 1 - cosine(node_data[i][1].flatten(), node_data[j][1].flatten())  # Ensure embeddings are 1D
-                    if similarity > self.similarity_threshold:
-                        G.add_edge(i, j, weight=similarity)
-                    pbar.update(1)
-        
+
+        # Vectorized similarity computation using cdist (MUCH faster)
+        print(f"Computing pairwise similarities for {len(node_data)} embeddings...")
+        embeddings_matrix = np.array([n[1].flatten() for n in node_data])
+
+        # Compute all pairwise cosine distances at once
+        distances = cdist(embeddings_matrix, embeddings_matrix, 'cosine')
+        similarities = 1 - distances
+
+        # Add edges where similarity exceeds threshold
+        edge_count = 0
+        for i in range(len(node_data)):
+            for j in range(i + 1, len(node_data)):
+                if similarities[i, j] > self.similarity_threshold:
+                    G.add_edge(i, j, weight=similarities[i, j])
+                    edge_count += 1
+
+        print(f"Added {edge_count} edges based on similarity threshold {self.similarity_threshold}")
+
         return G, node_data
 
     def apply_chinese_whispers(self, G: nx.Graph) -> dict:
