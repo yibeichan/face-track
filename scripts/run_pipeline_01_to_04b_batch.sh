@@ -5,7 +5,7 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --partition=ou_bcs_low
 #SBATCH --time=01:30:00
-#SBATCH --array=1-2
+#SBATCH --array=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
