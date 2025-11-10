@@ -81,6 +81,11 @@ class FaceClusterer:
         for i, (face_idx, embedding, face_data, frame_idx, image_path) in enumerate(node_data):
             G.add_node(i, face_idx=face_idx, embedding=embedding, face_data=face_data, frame_idx=frame_idx, image_path=image_path)
 
+        # Guard against empty embeddings (no faces detected)
+        if len(node_data) == 0:
+            print("No face embeddings to cluster. Returning empty graph.")
+            return G, node_data
+
         # Vectorized similarity computation using cdist (MUCH faster)
         print(f"Computing pairwise similarities for {len(node_data)} embeddings...")
         embeddings_matrix = np.array([n[1].flatten() for n in node_data])
@@ -89,13 +94,11 @@ class FaceClusterer:
         distances = cdist(embeddings_matrix, embeddings_matrix, 'cosine')
         similarities = 1 - distances
 
-        # Add edges where similarity exceeds threshold
-        edge_count = 0
-        for i in range(len(node_data)):
-            for j in range(i + 1, len(node_data)):
-                if similarities[i, j] > self.similarity_threshold:
-                    G.add_edge(i, j, weight=similarities[i, j])
-                    edge_count += 1
+        # Vectorized edge addition: find all pairs above threshold and add in bulk
+        rows, cols = np.where(np.triu(similarities, k=1) > self.similarity_threshold)
+        edges = [(r, c, similarities[r, c]) for r, c in zip(rows, cols)]
+        G.add_weighted_edges_from(edges)
+        edge_count = len(edges)
 
         print(f"Added {edge_count} edges based on similarity threshold {self.similarity_threshold}")
 
