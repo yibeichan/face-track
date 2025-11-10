@@ -44,23 +44,24 @@ class FaceTracker:
 
     @staticmethod
     def calculate_iou(box1, box2):
-        """Calculate Intersection over Union (IoU) between two bounding boxes."""
-        box1 = torch.tensor(box1, device=device, dtype=torch.float32)
-        box2 = torch.tensor(box2, device=device, dtype=torch.float32)
+        """Calculate Intersection over Union (IoU) between two bounding boxes using pure numpy."""
+        # Calculate intersection coordinates
+        x1_inter = max(box1[0], box2[0])
+        y1_inter = max(box1[1], box2[1])
+        x2_inter = min(box1[2], box2[2])
+        y2_inter = min(box1[3], box2[3])
 
-        x1_inter = torch.max(box1[0], box2[0])
-        y1_inter = torch.max(box1[1], box2[1])
-        x2_inter = torch.min(box1[2], box2[2])
-        y2_inter = torch.min(box1[3], box2[3])
+        # Calculate intersection area
+        inter_width = max(0.0, x2_inter - x1_inter)
+        inter_height = max(0.0, y2_inter - y1_inter)
+        inter_area = inter_width * inter_height
 
-        inter_area = torch.max(torch.tensor(0.0, device=device), x2_inter - x1_inter) * \
-                     torch.max(torch.tensor(0.0, device=device), y2_inter - y1_inter)
-
+        # Calculate union area
         box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
         box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
 
         iou = inter_area / (box1_area + box2_area - inter_area + 1e-6)
-        return iou.item()
+        return iou
 
     def _get_reference_box(self, track):
         """
@@ -178,16 +179,14 @@ class FrameSelector:
 
     @staticmethod
     def calculate_brightness(image):
-        """Calculate the brightness of an image using GPU if available."""
-        image_tensor = torch.tensor(image, dtype=torch.float32)
-        return torch.mean(image_tensor).item()
+        """Calculate the brightness of an image."""
+        return np.mean(image)
 
     @staticmethod
     def calculate_blurriness(image):
-        """Calculate the blurriness of an image using GPU if available."""
-        image_tensor = torch.tensor(image, dtype=torch.float32)
-        laplacian = torch.tensor(cv2.Laplacian(image, cv2.CV_32F))
-        return torch.var(laplacian).item()
+        """Calculate the blurriness using Laplacian variance."""
+        laplacian = cv2.Laplacian(image, cv2.CV_32F)
+        return np.var(laplacian)
 
     def save_cropped_face(self, face_image, unique_face_id, frame_idx):
         """Save the cropped face image to disk and return the relative path."""
@@ -247,10 +246,11 @@ class FrameSelector:
                         # Normalize the components
                         normalized_face_size = face_size / (width * height)
                         normalized_brightness = brightness / 255.0
-                        normalized_blurriness = blurriness / (blurriness + 1e-6)  # normalize blurriness itself
+                        # Higher blurriness = worse quality, so invert it
+                        normalized_blurriness = 1.0 / (1.0 + blurriness)
 
-                        # Combine features into a score
-                        score = confidence + 0.5 * normalized_face_size + 0.3 * normalized_brightness - 0.2 * normalized_blurriness
+                        # Combine features into a score (higher is better)
+                        score = confidence + 0.5 * normalized_face_size + 0.3 * normalized_brightness + 0.2 * normalized_blurriness
 
                         # Save the image and get its relative path
                         relative_path = self.save_cropped_face(face_image, f"{scene_id}_face_{face_id}", frame_idx)

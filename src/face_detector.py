@@ -7,24 +7,28 @@ import numpy as np
 from tqdm import tqdm
 
 class FaceDetector:
-    def __init__(self, video_path, output_dir, device='cuda' if torch.cuda.is_available() else 'cpu', min_confidence=0.8):
+    def __init__(self, video_path, output_dir, device='cuda' if torch.cuda.is_available() else 'cpu', min_confidence=0.8, save_annotated_video=False):
         self.video_path = video_path
         self.output_dir = output_dir
         self.device = device
         self.mtcnn = MTCNN(keep_all=True, device=self.device, factor=0.6)  # Use MTCNN for face detection with scaling factor
         self.min_confidence = min_confidence
+        self.save_annotated_video = save_annotated_video
     
     def detect_faces_in_video(self):
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():  # Check if the video file was opened successfully
             raise ValueError(f"Could not open video file: {self.video_path}")
-        
+
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        annotated_video_path = os.path.join(self.output_dir, f"{os.path.basename(self.video_path).split('.')[0]}_annotated.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(annotated_video_path, fourcc, int(fps), (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+
+        # Only create video writer if saving annotated video
+        out = None
+        if self.save_annotated_video:
+            annotated_video_path = os.path.join(self.output_dir, f"{os.path.basename(self.video_path).split('.')[0]}_annotated.mp4")
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(annotated_video_path, fourcc, int(fps), (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
 
         face_detections = []
 
@@ -32,9 +36,13 @@ class FaceDetector:
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            faces, annotated_frame = self._detect_and_annotate_frame(frame)
-            out.write(annotated_frame)
+
+            # Only annotate if we're saving the video
+            if self.save_annotated_video:
+                faces, annotated_frame = self._detect_and_annotate_frame(frame)
+                out.write(annotated_frame)
+            else:
+                faces = self._detect_frame(frame)
 
             face_detections.append({
                 "frame_index": frame_idx,
@@ -42,24 +50,31 @@ class FaceDetector:
             })
 
         cap.release()
-        out.release()
+        if out is not None:
+            out.release()
 
         return face_detections
 
-    def _detect_and_annotate_frame(self, frame):
+    def _detect_frame(self, frame):
+        """Detect faces in a frame without annotation."""
         faces = []
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
+
         boxes, probs, landmarks = self.mtcnn.detect(frame_rgb, landmarks=True)
         if boxes is not None:
             for box, prob, landmark in zip(boxes, probs, landmarks):
                 if prob >= self.min_confidence and self._is_valid_box(box):
                     faces.append({
-                        "box": box.tolist(), 
-                        "confidence": prob, 
+                        "box": box.tolist(),
+                        "confidence": prob,
                         "landmarks": landmark.tolist()
                     })
-        
+
+        return faces
+
+    def _detect_and_annotate_frame(self, frame):
+        """Detect faces and annotate the frame."""
+        faces = self._detect_frame(frame)
         annotated_frame = self._annotate_frame(frame, faces)
         return faces, annotated_frame
 
