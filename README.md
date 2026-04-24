@@ -1,6 +1,6 @@
 # char-tracker
 
-A comprehensive video face tracking and clustering pipeline for analyzing character appearances in TV episodes (Friends dataset). The system uses an annotation-driven workflow where manual corrections via ClusterMark feed into automated refinement.
+A video face tracking and clustering pipeline for analyzing character appearances in TV episodes (Friends dataset). The system uses an annotation-driven workflow where manual corrections via [ClusterMark](https://github.com/yibeichan/clustermark) feed into automated refinement. Stage-05 outputs are consumed by [te-charnet](https://github.com/yibeichan/te-charnet) for downstream multimodal fusion (face + speaker) and visualization.
 
 ## Pipeline Overview
 
@@ -17,8 +17,8 @@ The pipeline consists of sequential stages where each stage depends on outputs f
 | 04c | `04c_refine_with_annotations.py` | Propagates manual labels, merges/splits clusters (post-annotation) |
 | 05 | `05_generate_character_timestamps.py` | Generates per-second character presence timestamps |
 
-Downstream multimodal fusion (face + speaker) and visualization live in the
-te-charnet repository, which consumes stage-05 outputs.
+Downstream multimodal fusion (face + speaker) and visualization live in
+[te-charnet](https://github.com/yibeichan/te-charnet), which consumes stage-05 outputs.
 
 ## Running the Pipeline
 
@@ -219,10 +219,11 @@ Organizes face images into cluster directories for manual annotation in ClusterM
 ### Manual Annotation with ClusterMark
 
 Between stages 04b and 04c the pipeline pauses for a human-in-the-loop step.
-ClusterMark is used to inspect the 04b output and assign a character name to
-each cluster (plus optional quality modifiers — see below). The annotator
-uploads `<episode_id>.zip` produced by 04b, labels clusters, and exports the
-annotations as JSON. That JSON is the input to stage 04c.
+[ClusterMark](https://github.com/yibeichan/clustermark) is used to inspect the
+04b output and assign a character name to each cluster (plus optional quality
+modifiers — see below). The annotator uploads `<episode_id>.zip` produced by
+04b, labels clusters, and exports the annotations as JSON. That JSON is the
+input to stage 04c.
 
 ### Step 04c: Refine with Annotations
 
@@ -239,7 +240,8 @@ python 05_generate_character_timestamps.py <episode_id>
 ```
 
 Generates per-second character presence timestamps from refined clustering.
-Downstream multimodal fusion and visualization live in the te-charnet repo.
+These stage-05 outputs feed [te-charnet](https://github.com/yibeichan/te-charnet)
+for multimodal fusion and visualization.
 
 ## Output Files
 
