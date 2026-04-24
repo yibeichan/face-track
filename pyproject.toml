@@ -1,0 +1,35 @@
+[project]
+name = "char-tracker"
+version = "0.1.0"
+description = "Video face tracking and clustering pipeline for analyzing character appearances in TV episodes"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "networkx",
+    "opencv-python",
+    "pillow",
+    "python-dotenv",
+    "tqdm",
+    "natsort",
+    "matplotlib",
+    "seaborn",
+    "facenet-pytorch",
+    "scenedetect[opencv]",
+    "insightface",
+    "onnx",
+    "onnxruntime-gpu",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+extra-index-url = ["https://download.pytorch.org/whl/cu124"]
