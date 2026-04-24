@@ -15,8 +15,9 @@ The pipeline consists of sequential stages where each stage depends on outputs f
 | 04b | `04b_reorganize_by_cluster.py` | Reorganizes face images into cluster directories for annotation |
 | 04c | `04c_refine_with_annotations.py` | Propagates manual labels, merges/splits clusters (post-annotation) |
 | 05 | `05_generate_character_timestamps.py` | Generates per-second character presence timestamps |
-| 06 | `06_multimodal_fusion.py` | Merges face presence with speaker annotations, guest face enrichment |
-| 07 | `07_visualization.py` | QA visualization (timeline, screentime, co-occurrence, confidence, cross-modal) |
+
+Downstream multimodal fusion (face + speaker) and visualization live in the
+te-charnet repository, which consumes stage-05 outputs.
 
 ## Running the Pipeline
 
@@ -114,10 +115,8 @@ ${SCRATCH_DIR}/
     ├── 03_face_tracking/           # Tracked faces with selected frames
     ├── 04a_face_clustering/        # Clustering results
     ├── 04b_face_tracking_by_cluster/  # Reorganized by cluster (for annotation)
-    ├── 04c_face_tracking_by_cluster_refined/  # Refined after annotation
-    ├── 05_character_timestamps/    # Per-second character presence
-    ├── 06_multimodal/              # Fused face+speaker data + guest candidates
-    └── 07_visualization/           # QA plots (per-episode + season)
+    ├── 04c_face_tracking_by_cluster_refined/  # Refined after annotation (only with --reorganize)
+    └── 05_character_timestamps/    # Per-second character presence
 ```
 
 ## Individual Step Details
@@ -193,28 +192,7 @@ python 05_generate_character_timestamps.py <episode_id>
 ```
 
 Generates per-second character presence timestamps from refined clustering.
-
-### Step 06: Multimodal Fusion
-
-```bash
-python 06_multimodal_fusion.py <episode_id>
-python 06_multimodal_fusion.py --season 1   # batch all episodes
-```
-
-Merges face presence (stage 05) with speaker annotations to produce per-second character state (seen+speaking, seen_only, speaking_only, absent). Also performs guest face enrichment by matching unidentified face tracks to guest speakers via temporal overlap.
-
-Requires `SPEAKER_DIR` in `.env` pointing to speaker annotation TSVs.
-
-### Step 07: QA Visualization
-
-```bash
-python 07_visualization.py <episode_id>                    # single episode
-python 07_visualization.py --season 1                      # all episodes + season summary
-python 07_visualization.py --season 1 --aggregate-only     # season summary only
-python 07_visualization.py <episode_id> --plots timeline,screentime  # specific plots
-```
-
-Generates per-episode and season-aggregate plots: temporal timeline, screen time bars, co-occurrence heatmap, detection confidence distribution, and cross-modal comparison (requires stage 06).
+Downstream multimodal fusion and visualization live in the te-charnet repo.
 
 ## Output Files
 
@@ -229,11 +207,9 @@ Each episode generates:
 | 04a | `<episode_id>_matched_faces_with_clusters.json` - Clustering results |
 | 04b | `<episode_id>/` - Directory with cluster subdirectories |
 | 04b | `<episode_id>.zip` - ZIP file for ClusterMark upload |
-| 04c | `<episode_id>_matched_faces_with_clusters_refined.json` - Refined clusters |
+| 04c | `<episode_id>_matched_faces_with_clusters_refined.json` - Refined clusters (written to 04a dir) |
 | 05 | `<episode_id>_timestamps.{json,csv}` - Character timestamps |
-| 06 | `<episode_id>_multimodal.{json,csv}` - Fused face+speaker data |
-| 06 | `<episode_id>_guest_candidates.json` - Guest face enrichment |
-| 07 | `<episode_id>/` - PNG plots (timeline, screentime, etc.) |
+| 05 | `<episode_id>_face_locations.json` - Per-frame bounding boxes |
 
 ## Embedding Models
 
@@ -334,9 +310,9 @@ char-tracker/
 │   ├── 04b_reorganize_by_cluster.py
 │   ├── 04c_refine_with_annotations.py
 │   ├── 05_generate_character_timestamps.py
-│   ├── 06_multimodal_fusion.py
-│   ├── 07_visualization.py
-│   └── run_pipeline_01_to_04b.sh
+│   ├── run_pipeline_01_to_04b.sh
+│   ├── run_pipeline_04c_to_05.sh
+│   └── run_pipeline_annotation_episodes.sh
 ├── src/                   # Core modules
 │   ├── scene_detector.py
 │   ├── face_detector.py

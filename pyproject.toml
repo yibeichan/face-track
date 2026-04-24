@@ -17,8 +17,6 @@ dependencies = [
     "python-dotenv",
     "tqdm",
     "natsort",
-    "matplotlib",
-    "seaborn",
     "facenet-pytorch",
     "scenedetect[opencv]",
     "insightface",
