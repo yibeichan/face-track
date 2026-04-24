@@ -4,7 +4,7 @@
 #SBATCH --output=./logs/%x_%j.out
 #SBATCH --error=./logs/%x_%j.err
 #SBATCH --partition=ou_bcs_normal,pi_satra
-#SBATCH --time=02:00:00
+#SBATCH --time=00:05:00
 #SBATCH --array=23,43,73
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:a100:1
@@ -68,9 +68,8 @@
 # Load cuDNN module for onnxruntime-gpu (required for libcudnn.so.9)
 module load cudnn/9.8.0.87-cuda12
 
-# Activate micromamba environment
-eval "$(micromamba shell hook --shell bash)"
-micromamba activate friends_char_track
+# Activate uv virtual environment
+source "${SLURM_SUBMIT_DIR:-.}/.venv/bin/activate"
 
 # Set up paths
 if [ -n "$SLURM_SUBMIT_DIR" ]; then
@@ -197,7 +196,7 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "2. Create ZIP for ClusterMark upload"
     echo "3. Annotate clusters and export JSON"
     echo "4. Run: python scripts/04c_refine_with_annotations.py $TASK_ID <annotation.json>"
-    echo "5. Run: python scripts/08_generate_character_timestamps.py $TASK_ID <annotation.json>"
+    echo "5. Run: python scripts/05_generate_character_timestamps.py $TASK_ID"
     echo "=========================================="
 else
     echo ""

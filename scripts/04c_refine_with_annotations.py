@@ -378,7 +378,7 @@ def main(episode_id, annotation_file, scratch_dir, dry_run=False, reorganize=Fal
     logger.info("=" * 70)
 
     logger.info("\nNext step:")
-    logger.info(f"  python ./scripts/08_generate_character_timestamps.py {episode_id}")
+    logger.info(f"  python ./scripts/05_generate_character_timestamps.py {episode_id}")
 
 
 if __name__ == "__main__":

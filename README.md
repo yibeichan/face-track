@@ -14,9 +14,9 @@ The pipeline consists of sequential stages where each stage depends on outputs f
 | 04a | `04a_face_clustering.py` | Clusters similar faces across scenes using embeddings |
 | 04b | `04b_reorganize_by_cluster.py` | Reorganizes face images into cluster directories for annotation |
 | 04c | `04c_refine_with_annotations.py` | Propagates manual labels, merges/splits clusters (post-annotation) |
-| 08 | `08_generate_character_timestamps.py` | Generates per-second character presence timestamps |
-
-**Note:** Stages 05-07 were removed as their functionality is now handled by `04c_refine_with_annotations.py`.
+| 05 | `05_generate_character_timestamps.py` | Generates per-second character presence timestamps |
+| 06 | `06_multimodal_fusion.py` | Merges face presence with speaker annotations, guest face enrichment |
+| 07 | `07_visualization.py` | QA visualization (timeline, screentime, co-occurrence, confidence, cross-modal) |
 
 ## Running the Pipeline
 
@@ -46,7 +46,7 @@ cd scripts
 ./run_pipeline_01_to_04b.sh friends_s01e03b --mode symlink
 ```
 
-### Annotation Workflow (Stages 04c + 08)
+### Annotation Workflow (Stages 04c + 05)
 
 After manually annotating clusters in ClusterMark:
 
@@ -58,7 +58,7 @@ python 03_within_scene_tracking.py <episode_id> --top-n 3
 python 04c_refine_with_annotations.py <episode_id> <annotation_file.json>
 
 # 3. Generate final character timestamps
-python 08_generate_character_timestamps.py <episode_id>
+python 05_generate_character_timestamps.py <episode_id>
 ```
 
 ### Batch Processing with SLURM
@@ -91,11 +91,8 @@ See the script header for the complete episode list and line number mappings.
 ### Environment Setup
 
 ```bash
-# Create environment from env.yaml
-micromamba env create -f env.yaml
-
-# Activate environment
-micromamba activate char-tracker
+# Create virtual environment and install dependencies
+uv sync
 ```
 
 ### Environment Variables
@@ -118,7 +115,9 @@ ${SCRATCH_DIR}/
     ├── 04a_face_clustering/        # Clustering results
     ├── 04b_face_tracking_by_cluster/  # Reorganized by cluster (for annotation)
     ├── 04c_face_tracking_by_cluster_refined/  # Refined after annotation
-    └── 08_character_timestamps/    # Per-second character presence
+    ├── 05_character_timestamps/    # Per-second character presence
+    ├── 06_multimodal/              # Fused face+speaker data + guest candidates
+    └── 07_visualization/           # QA plots (per-episode + season)
 ```
 
 ## Individual Step Details
@@ -187,13 +186,35 @@ python 04c_refine_with_annotations.py <episode_id> <annotation_file.json>
 
 Propagates manual labels from ClusterMark, merges/splits clusters, and produces refined character assignments.
 
-### Step 08: Generate Character Timestamps
+### Step 05: Generate Character Timestamps
 
 ```bash
-python 08_generate_character_timestamps.py <episode_id>
+python 05_generate_character_timestamps.py <episode_id>
 ```
 
 Generates per-second character presence timestamps from refined clustering.
+
+### Step 06: Multimodal Fusion
+
+```bash
+python 06_multimodal_fusion.py <episode_id>
+python 06_multimodal_fusion.py --season 1   # batch all episodes
+```
+
+Merges face presence (stage 05) with speaker annotations to produce per-second character state (seen+speaking, seen_only, speaking_only, absent). Also performs guest face enrichment by matching unidentified face tracks to guest speakers via temporal overlap.
+
+Requires `SPEAKER_DIR` in `.env` pointing to speaker annotation TSVs.
+
+### Step 07: QA Visualization
+
+```bash
+python 07_visualization.py <episode_id>                    # single episode
+python 07_visualization.py --season 1                      # all episodes + season summary
+python 07_visualization.py --season 1 --aggregate-only     # season summary only
+python 07_visualization.py <episode_id> --plots timeline,screentime  # specific plots
+```
+
+Generates per-episode and season-aggregate plots: temporal timeline, screen time bars, co-occurrence heatmap, detection confidence distribution, and cross-modal comparison (requires stage 06).
 
 ## Output Files
 
@@ -209,7 +230,10 @@ Each episode generates:
 | 04b | `<episode_id>/` - Directory with cluster subdirectories |
 | 04b | `<episode_id>.zip` - ZIP file for ClusterMark upload |
 | 04c | `<episode_id>_matched_faces_with_clusters_refined.json` - Refined clusters |
-| 08 | `<episode_id>_timestamps.{json,csv}` - Character timestamps |
+| 05 | `<episode_id>_timestamps.{json,csv}` - Character timestamps |
+| 06 | `<episode_id>_multimodal.{json,csv}` - Fused face+speaker data |
+| 06 | `<episode_id>_guest_candidates.json` - Guest face enrichment |
+| 07 | `<episode_id>/` - PNG plots (timeline, screentime, etc.) |
 
 ## Embedding Models
 
@@ -220,7 +244,7 @@ Two embedding models are supported:
 | `vggface2` | InceptionResnetV1 on VGGFace2 | 512-dim | 160×160 |
 | `buffalo_l` | InsightFace buffalo_l (ArcFace) | 512-dim | 112×112 |
 
-**IMPORTANT:** Embedding models are incompatible. Switching models requires re-running stages 04a, 04c, and 08 for all episodes.
+**IMPORTANT:** Embedding models are incompatible. Switching models requires re-running stages 04a, 04c, and 05 for all episodes.
 
 ## Annotation Workflow with ClusterMark
 
@@ -228,7 +252,7 @@ Two embedding models are supported:
 2. **Upload to ClusterMark** and annotate clusters (assign character labels)
 3. **Export annotations** as JSON from ClusterMark
 4. **Run stage 04c** to propagate labels and refine clustering
-5. **Run stage 08** to generate final character timestamps
+5. **Run stage 05** to generate final character timestamps
 
 ### Quality Modifiers
 
@@ -270,7 +294,7 @@ sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
 
 **Job fails immediately:**
 - Check log files in `logs/` directory
-- Verify environment exists: `micromamba env list`
+- Verify environment exists: check `.venv/` directory
 - Ensure `SCRATCH_DIR` is set in `.env`
 
 **GPU not available:**
@@ -309,7 +333,9 @@ char-tracker/
 │   ├── 04a_face_clustering.py
 │   ├── 04b_reorganize_by_cluster.py
 │   ├── 04c_refine_with_annotations.py
-│   ├── 08_generate_character_timestamps.py
+│   ├── 05_generate_character_timestamps.py
+│   ├── 06_multimodal_fusion.py
+│   ├── 07_visualization.py
 │   └── run_pipeline_01_to_04b.sh
 ├── src/                   # Core modules
 │   ├── scene_detector.py
