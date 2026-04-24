@@ -64,28 +64,53 @@ python 05_generate_character_timestamps.py <episode_id>
 
 ### Batch Processing with SLURM
 
-#### Annotation Episodes
+Three SLURM entry points cover the full dataset workflow:
 
-Process the 18 representative episodes selected for annotation:
+#### 1. Initial clustering batch — `submit_all_episodes_batched.sh`
+
+Throttled submitter for stages 01–04b across all 292 s1–s6 episodes. Submits
+10 jobs at a time and waits 2h between batches; safe to interrupt/resume
+since submission state is logged. Designed to run inside tmux.
 
 ```bash
-# Process all 18 annotation episodes
+tmux new -s batch-submit
+./scripts/submit_all_episodes_batched.sh
+```
+
+#### 2. Annotation pilot — `run_pipeline_annotation_episodes.sh`
+
+Wrapper around `run_pipeline_01_to_04b.sh` for the annotation-selected
+episodes listed in `data/annotation_episodes.txt`. Historically used to
+stage a representative subset for ClusterMark; still useful for re-running
+a specific annotation target.
+
+```bash
+# Default array (see script header for the current episode list)
 sbatch scripts/run_pipeline_annotation_episodes.sh
 
-# Process Phase 1 pilot (5 episodes)
-sbatch --array=6,118,237,73,252 scripts/run_pipeline_annotation_episodes.sh
-
-# Process a single episode (e.g., s01e03b is line 6)
+# Single episode by its line number in data/episode_id.txt (e.g. s01e03b = 6)
 sbatch --array=6 scripts/run_pipeline_annotation_episodes.sh
 ```
 
-See the script header for the complete episode list and line number mappings.
+Resources: `ou_bcs_normal,pi_satra`, 5 min, 4 GB, 1×A100.
 
-**Resource Allocation:**
-- **Time**: 1 hour per video
-- **Memory**: 4 GB
-- **GPU**: 1 A100 GPU per job
-- **Partition**: `ou_bcs_low`
+#### 3. Post-annotation batch — `run_pipeline_04c_to_05.sh`
+
+Per-season array task: task N iterates all episodes of season N sequentially
+on a single GPU allocation. Covers s1–s6 (all reviewed annotations).
+
+```bash
+# All six seasons (default --array=1-6)
+sbatch scripts/run_pipeline_04c_to_05.sh
+
+# A single season
+sbatch --array=3 scripts/run_pipeline_04c_to_05.sh
+
+# Local test for one episode
+./scripts/run_pipeline_04c_to_05.sh friends_s01e01a
+```
+
+Resources: `mit_preemptable`, 12 h (empirically ~100 s/season), 4 GB, 1×A100.
 
 ## Prerequisites
 
@@ -100,23 +125,36 @@ uv sync
 
 Create a `.env` file in the repository root:
 ```
-SCRATCH_DIR=/path/to/your/data
+SCRATCH_DIR=/path/to/intermediate/and/final/outputs
+VIDEO_DIR=/path/to/input/videos
 ```
+
+- `SCRATCH_DIR` — where all stage outputs are written (`output/` subtree below).
+- `VIDEO_DIR` — root directory containing input `.mkv` files organized by season
+  (`s1/friends_s01e01a.mkv`, ...). Resolved by `utils.get_video_path()`.
 
 ### Data Structure
 
+Input videos (read from `$VIDEO_DIR`):
 ```
-${SCRATCH_DIR}/
-├── data/
-│   └── mkv2mp4/                    # Input videos (.mp4)
-└── output/
-    ├── 01_scene_detection/         # Scene boundary files (.txt)
-    ├── 02_face_detection/          # Face detection results (.json)
-    ├── 03_face_tracking/           # Tracked faces with selected frames
-    ├── 04a_face_clustering/        # Clustering results
-    ├── 04b_face_tracking_by_cluster/  # Reorganized by cluster (for annotation)
-    ├── 04c_face_tracking_by_cluster_refined/  # Refined after annotation (only with --reorganize)
-    └── 05_character_timestamps/    # Per-second character presence
+${VIDEO_DIR}/
+├── s1/
+│   ├── friends_s01e01a.mkv
+│   └── ...
+├── s2/
+└── ...
+```
+
+Pipeline outputs (written under `$SCRATCH_DIR`):
+```
+${SCRATCH_DIR}/output/
+├── 01_scene_detection/            # Scene boundary files (.txt)
+├── 02_face_detection/             # Face detection results (.json)
+├── 03_face_tracking/              # Tracked faces with selected frames
+├── 04a_face_clustering/           # Clustering results + stage-04c refined JSON
+├── 04b_face_tracking_by_cluster/  # Reorganized by cluster (for annotation)
+├── 04c_face_tracking_by_cluster_refined/  # Only populated when 04c is run with --reorganize
+└── 05_character_timestamps/       # Per-second character presence + face locations
 ```
 
 ## Individual Step Details
@@ -249,9 +287,9 @@ squeue -u $USER
 # View specific job details
 squeue -j <job_id>
 
-# Check logs in real-time
-tail -f logs/pipeline_01_04b_<job_id>.out
-tail -f logs/pipeline_01_04b_<job_id>.err
+# Check logs in real-time (filename pattern: <job_name>_<job_id>[_<array_task>].{out,err})
+tail -f logs/refine_timestamps_<job_id>_<task>.out
+tail -f logs/refine_timestamps_<job_id>_<task>.err
 
 # Cancel a job
 scancel <job_id>
@@ -310,9 +348,10 @@ char-tracker/
 │   ├── 04b_reorganize_by_cluster.py
 │   ├── 04c_refine_with_annotations.py
 │   ├── 05_generate_character_timestamps.py
-│   ├── run_pipeline_01_to_04b.sh
-│   ├── run_pipeline_04c_to_05.sh
-│   └── run_pipeline_annotation_episodes.sh
+│   ├── run_pipeline_01_to_04b.sh            # local driver for stages 01-04b
+│   ├── run_pipeline_annotation_episodes.sh  # SLURM wrapper for annotation pilot
+│   ├── run_pipeline_04c_to_05.sh            # SLURM post-annotation batch (per season)
+│   └── submit_all_episodes_batched.sh       # throttled 292-episode 01-04b submitter
 ├── src/                   # Core modules
 │   ├── scene_detector.py
 │   ├── face_detector.py
