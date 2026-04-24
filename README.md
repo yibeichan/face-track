@@ -13,6 +13,7 @@ The pipeline consists of sequential stages where each stage depends on outputs f
 | 03 | `03_within_scene_tracking.py` | Tracks faces across frames within scenes, selects representative frames |
 | 04a | `04a_face_clustering.py` | Clusters similar faces across scenes using embeddings |
 | 04b | `04b_reorganize_by_cluster.py` | Reorganizes face images into cluster directories for annotation |
+|  —  | **ClusterMark (manual)** | Human annotator labels each cluster with a character name; exports JSON |
 | 04c | `04c_refine_with_annotations.py` | Propagates manual labels, merges/splits clusters (post-annotation) |
 | 05 | `05_generate_character_timestamps.py` | Generates per-second character presence timestamps |
 
@@ -215,6 +216,14 @@ python 04b_reorganize_by_cluster.py <episode_id> [--mode copy|move|symlink] [--c
 
 Organizes face images into cluster directories for manual annotation in ClusterMark.
 
+### Manual Annotation with ClusterMark
+
+Between stages 04b and 04c the pipeline pauses for a human-in-the-loop step.
+ClusterMark is used to inspect the 04b output and assign a character name to
+each cluster (plus optional quality modifiers — see below). The annotator
+uploads `<episode_id>.zip` produced by 04b, labels clusters, and exports the
+annotations as JSON. That JSON is the input to stage 04c.
+
 ### Step 04c: Refine with Annotations
 
 ```bash
@@ -277,57 +286,6 @@ You can add quality modifiers to labels (e.g., `rachel @poor`, `monica @blurry`)
 - `@dark` - Poorly lit face
 - `@profile` - Side view or extreme angle
 - `@back` - Back of head or not visible
-
-## Monitoring SLURM Jobs
-
-```bash
-# Check job status
-squeue -u $USER
-
-# View specific job details
-squeue -j <job_id>
-
-# Check logs in real-time (filename pattern: <job_name>_<job_id>[_<array_task>].{out,err})
-tail -f logs/refine_timestamps_<job_id>_<task>.out
-tail -f logs/refine_timestamps_<job_id>_<task>.err
-
-# Cancel a job
-scancel <job_id>
-
-# View completed job info
-sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
-```
-
-## Troubleshooting
-
-### SLURM Issues
-
-**Job pending (PD) for long time:**
-- Check cluster load with `squeue`
-- Verify GPU availability: `sinfo -p ou_bcs_low`
-
-**Job fails immediately:**
-- Check log files in `logs/` directory
-- Verify environment exists: check `.venv/` directory
-- Ensure `SCRATCH_DIR` is set in `.env`
-
-**GPU not available:**
-- Verify partition allows GPU access
-- Check cuDNN module is loaded (required for onnxruntime-gpu)
-
-### Pipeline Issues
-
-**Pipeline fails at step 03:**
-- Check if scenes were detected in step 01
-- Verify face detection found faces in step 02
-
-**No cluster directories created:**
-- May indicate no faces were successfully tracked
-- Check intermediate outputs from steps 02 and 03
-
-**Annotation refinement fails:**
-- Verify annotation JSON format matches ClusterMark export
-- Check that cluster IDs match between clustering and annotation files
 
 ## Testing
 
