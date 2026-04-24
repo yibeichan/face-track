@@ -55,7 +55,7 @@ class TestFaceClusterer:
         face_embeddings = [
             {
                 'scene_id': 'scene_0',
-                'unique_face_id': i,
+                'unique_face_id': f'scene_0_face_{i}',
                 'global_face_id': i,
                 'embeddings': [
                     {'frame_idx': 0, 'embedding': identical_embedding.copy(), 'image_path': f'img{i}.jpg'}
