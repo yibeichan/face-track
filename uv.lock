@@ -96,6 +96,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "facenet-pytorch" },
     { name = "insightface" },
+    { name = "matplotlib" },
     { name = "natsort" },
     { name = "networkx" },
     { name = "numpy" },
@@ -123,6 +124,7 @@ dev = [
 requires-dist = [
     { name = "facenet-pytorch" },
     { name = "insightface" },
+    { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "natsort" },
     { name = "networkx" },
     { name = "numpy" },
