@@ -5,7 +5,7 @@
 #SBATCH --error=./logs/%x_%j_%a.err
 #SBATCH --partition=mit_preemptable
 #SBATCH --time=12:00:00
-#SBATCH --array=1-6
+#SBATCH --array=1-7
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=4G
@@ -15,7 +15,7 @@
 # Runs on reviewed annotation output to produce per-frame character presence
 # with face bounding box coordinates.
 #
-# Parallelism model: ONE JOB PER SEASON (6 array tasks for s1-s6).
+# Parallelism model: ONE JOB PER SEASON (7 array tasks for s1-s7).
 # Each task grabs every episode listed for its season in data/episode_id.txt
 # and processes them sequentially on a single GPU allocation. This trades
 # fine-grained parallelism for far less scheduler churn and one warm-up per
@@ -29,16 +29,17 @@
 #   - Reviewed annotations present under output/reviewed_output/s{N}/
 #
 # Season -> array task mapping:
-#   SLURM_ARRAY_TASK_ID = season number (1-6)
+#   SLURM_ARRAY_TASK_ID = season number (1-7)
 #   e.g. --array=3 runs all s3 episodes in a single job
 #
 # Episode counts per season (for time-budget sanity):
 #   s1: 48 episodes    s4: 48 episodes
 #   s2: 48 episodes    s5: 48 episodes
 #   s3: 50 episodes    s6: 50 episodes
+#                       s7: 49 episodes
 #
 # Usage:
-#   # Process all reviewed seasons s1-s6 (6 parallel jobs, default):
+#   # Process all reviewed seasons s1-s7 (7 parallel jobs, default):
 #   sbatch scripts/run_pipeline_04c_to_05.sh
 #
 #   # Process a single season:
@@ -110,7 +111,7 @@ else
         echo "ERROR: Not running via SLURM and no episode specified"
         echo ""
         echo "Usage (SLURM - recommended):"
-        echo "  sbatch scripts/run_pipeline_04c_to_05.sh              # all s1-s6"
+        echo "  sbatch scripts/run_pipeline_04c_to_05.sh              # all s1-s7"
         echo "  sbatch --array=1 scripts/run_pipeline_04c_to_05.sh    # s1 only"
         echo "  sbatch --array=1,3,5 scripts/run_pipeline_04c_to_05.sh"
         echo ""
