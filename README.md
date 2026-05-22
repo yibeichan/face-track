@@ -98,10 +98,10 @@ Resources: `ou_bcs_normal,pi_satra`, 5 min, 4 GB, 1×A100.
 #### 3. Post-annotation batch — `run_pipeline_04c_to_05.sh`
 
 Per-season array task: task N iterates all episodes of season N sequentially
-on a single GPU allocation. Covers s1–s6 (all reviewed annotations).
+on a single GPU allocation. Covers s1–s7 (all reviewed annotations).
 
 ```bash
-# All six seasons (default --array=1-6)
+# All seven seasons (default --array=1-7)
 sbatch scripts/run_pipeline_04c_to_05.sh
 
 # A single season
@@ -112,6 +112,20 @@ sbatch --array=3 scripts/run_pipeline_04c_to_05.sh
 ```
 
 Resources: `mit_preemptable`, 12 h (empirically ~100 s/season), 4 GB, 1×A100.
+
+### QA Visualizations (optional, post-stage-05)
+
+`scripts/qa_face_visualizations.py` renders per-season diagnostic plots
+(screentime, co-occurrence, per-episode coverage) from stage-05 output for
+sanity-checking before downstream consumption. Not a pipeline stage — keep
+the non-numbered filename.
+
+```bash
+uv run python scripts/qa_face_visualizations.py --season 1
+uv run python scripts/qa_face_visualizations.py --all-seasons
+```
+
+Output: `$SCRATCH_DIR/output/qa_face_viz/s{N}/{screentime,cooccurrence,per_episode_screentime}.png`.
 
 ## Prerequisites
 
@@ -308,6 +322,7 @@ char-tracker/
 │   ├── 04b_reorganize_by_cluster.py
 │   ├── 04c_refine_with_annotations.py
 │   ├── 05_generate_character_timestamps.py
+│   ├── qa_face_visualizations.py            # optional post-05 diagnostic plots
 │   ├── run_pipeline_01_to_04b.sh            # local driver for stages 01-04b
 │   ├── run_pipeline_annotation_episodes.sh  # SLURM wrapper for annotation pilot
 │   ├── run_pipeline_04c_to_05.sh            # SLURM post-annotation batch (per season)
@@ -321,7 +336,6 @@ char-tracker/
 │   ├── constants.py
 │   └── utils.py
 ├── tests/                 # Unit tests
-├── docs/                  # Documentation
 └── data/                  # Episode lists and reference data
 ```
 
